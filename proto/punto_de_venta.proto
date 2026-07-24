@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+// V1 es de test
+package puntodeventa.v1;
+
+// Opciones para generar el cliente Android con Java/Kotlin.
+option java_multiple_files = true;
+option java_package = "com.alffy.puntodeventa.grpc";
+option java_outer_classname = "ConexionProto";
+
+service ConexionService {
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+message PingRequest {
+  string cliente = 1;
+}
+
+message PingResponse {
+  bool conectado = 1;
+  string mensaje = 2;
+}
