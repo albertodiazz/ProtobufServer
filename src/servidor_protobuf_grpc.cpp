@@ -118,3 +118,7 @@ void servidor_protobuf_grpc_print_vector(const std::vector<std::string> &strings
         std::cout << "servidor_protobuf_grpc/0.1 " << *it << std::endl;
     }
 }
+
+void server(){
+	std::cout << "Hola from Server" << std::endl;
+}

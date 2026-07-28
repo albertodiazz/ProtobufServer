@@ -118,6 +118,7 @@ target_link_libraries(pos_proto
     PUBLIC
         protobuf::libprotobuf
         gRPC::grpc++
+        gRPC::grpc++_reflection
 )
 
 target_include_directories(pos_proto
