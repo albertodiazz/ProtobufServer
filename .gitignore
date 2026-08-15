@@ -9,3 +9,8 @@ compile_commands.json
 *.grpc.pb
 
 .nvim.lua
+.env
+
+postgres-language-server.jsonc
+*.sql
+

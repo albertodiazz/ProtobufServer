@@ -6,13 +6,22 @@ project(
     LANGUAGES CXX
 )
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+find_package(libpqxx REQUIRED)
 
 # Conan genera protobuf-config.cmake y gRPCConfig.cmake.
 find_package(protobuf CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
+
+list(APPEND CMAKE_PREFIX_PATH
+    "$ENV{HOME}/.local/opt/aws-sdk-cpp"
+)
+find_package(AWSSDK REQUIRED COMPONENTS s3)
 
 # ---------------------------------------------------------------------------
 # Forzar las herramientas contenidas en los paquetes de Conan.
@@ -156,21 +165,26 @@ protobuf_generate(
 # ---------------------------------------------------------------------------
 # Servidor
 # ---------------------------------------------------------------------------
+file(GLOB_RECURSE PROJECT_SOURCES
+    CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+)
 
 add_executable(${PROJECT_NAME}
-    src/main.cpp
-    src/servidor_protobuf_grpc.cpp
-    src/servidor_protobuf_grpc.h
+	${PROJECT_SOURCES}
+	src/servidor_protobuf_grpc.h
 )
 
 target_include_directories(${PROJECT_NAME}
-    PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+	PRIVATE
+	"${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 
 target_link_libraries(${PROJECT_NAME}
-    PRIVATE
-        pos_proto
+	PRIVATE
+	pos_proto
+	libpqxx::pqxx
+	${AWSSDK_LINK_LIBRARIES}
 )
 
 # ---------------------------------------------------------------------------
@@ -180,8 +194,8 @@ target_link_libraries(${PROJECT_NAME}
 include(GNUInstallDirs)
 
 install(
-    TARGETS ${PROJECT_NAME}
-    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+	TARGETS ${PROJECT_NAME}
+	RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
 )
 
 

@@ -2,6 +2,8 @@
 
 #include <vector>
 #include <string>
+#include "core/database/S3ObjectStorage/OjectStorage.h"
+#include "features/product/data/SqlProductRepository.h"
 #include "punto_de_venta.grpc.pb.h"
 
 
@@ -28,6 +30,28 @@ namespace puntodeventa::v1{
 						const PingRequest* request,
 						PingResponse* response
 						) override;
-						
+
+		};
+
+	class SERVIDOR_PROTOBUF_GRPC_EXPORT ProductServiceImpl final 
+		: public ProductService::Service {
+
+			public:
+
+				explicit ProductServiceImpl(
+						::puntodeventa::product::ProductRepository& respository,
+						::puntodeventa::storage::ObjectStorage& objectStorage
+						);
+
+				grpc::Status CreateProduct(
+						grpc::ServerContext* context,
+						const CreateProductRequest* request,
+						CreateProductResponse* response
+						) override;
+
+			private:
+				puntodeventa::product::ProductRepository& repository_;
+				puntodeventa::storage::ObjectStorage& objectStorage_;
+
 		};
 }

@@ -20,3 +20,27 @@ message PingResponse {
   bool conectado = 1;
   string mensaje = 2;
 }
+
+service ProductService {
+    rpc CreateProduct(CreateProductRequest)
+        returns (CreateProductResponse);
+}
+
+message ProductImage {
+    bytes data = 1;
+}
+
+message CreateProductRequest {
+    string nombre = 1;
+    int32 precio = 3;
+    int32 costo = 4;
+    string descripcion = 5;
+    ProductImage imagen = 6;
+}
+
+message CreateProductResponse {
+    bool ok = 1;
+    string mensaje = 2;
+    int64 product_id = 3;
+    string internal_barcode = 4;
+}
