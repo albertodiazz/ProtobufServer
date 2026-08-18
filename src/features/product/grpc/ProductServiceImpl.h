@@ -1,10 +1,8 @@
 #pragma once
 
-#include <vector>
-#include <string>
-#include "core/database/S3ObjectStorage/OjectStorage.h"
-#include "features/product/domain/ProductRepository.h"
 #include "punto_de_venta.grpc.pb.h"
+#include "features/product/domain/ProductRepository.h"
+#include "features/product/application/CreateProduct.h"
 
 
 #ifdef _WIN32
@@ -13,10 +11,9 @@
   #define SERVIDOR_PROTOBUF_GRPC_EXPORT
 #endif
 
-SERVIDOR_PROTOBUF_GRPC_EXPORT void servidor_protobuf_grpc();
-SERVIDOR_PROTOBUF_GRPC_EXPORT void servidor_protobuf_grpc_print_vector(const std::vector<std::string> &strings);
-
-SERVIDOR_PROTOBUF_GRPC_EXPORT void server();
+namespace puntodeventa::storage {
+    class ObjectStorage;
+}
 
 namespace puntodeventa::v1{
 
@@ -64,6 +61,7 @@ namespace puntodeventa::v1{
 			private:
 				puntodeventa::product::ProductRepository& repository_;
 				puntodeventa::storage::ObjectStorage& objectStorage_;
+				::puntodeventa::product::CreateProduct& createProduct_;
 
 		};
 }

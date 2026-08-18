@@ -1,41 +1,98 @@
 syntax = "proto3";
 
-// V1 es de test
 package puntodeventa.v1;
 
-// Opciones para generar el cliente Android con Java/Kotlin.
 option java_multiple_files = true;
 option java_package = "com.alffy.puntodeventa.grpc";
 option java_outer_classname = "ConexionProto";
 
-service ConexionService {
-  rpc Ping(PingRequest) returns (PingResponse);
-}
-
-message PingRequest {
-  string cliente = 1;
-}
-
-message PingResponse {
-  bool conectado = 1;
-  string mensaje = 2;
-}
 
 service ProductService {
+
     rpc CreateProduct(CreateProductRequest)
         returns (CreateProductResponse);
+
+    rpc GetProductById(GetProductByIdRequest)
+        returns (GetProductResponse);
+
+    rpc GetProductByBarcode(GetProductByBarcodeRequest)
+        returns (GetProductResponse);
+
+    rpc UpdateProduct(UpdateProductRequest)
+        returns (UpdateProductResponse);
+
+    rpc DeleteProduct(DeleteProductRequest)
+        returns (DeleteProductResponse);
 }
+
+
+//////////////////////
+// Models
+//////////////////////
 
 message ProductImage {
     bytes data = 1;
 }
 
+message Producto {
+    int64 product_id = 1;
+    string nombre = 2;
+    string barcode = 3;
+    string descripcion = 4;
+    int32 precio = 5;
+    int32 costo = 6;
+    ProductImage imagen = 7;
+}
+
+
+//////////////////////
+// Requests
+//////////////////////
+
+message GetProductByIdRequest {
+    int64 product_id = 1;
+}
+
+message GetProductByBarcodeRequest {
+    string barcode = 1;
+}
+
 message CreateProductRequest {
     string nombre = 1;
+    int32 precio = 2;
+    int32 costo = 3;
+    string descripcion = 4;
+    ProductImage imagen = 5;
+}
+
+message UpdateProductRequest {
+    string barcode = 1;
+    string nombre = 2;
     int32 precio = 3;
     int32 costo = 4;
     string descripcion = 5;
     ProductImage imagen = 6;
+}
+
+message DeleteProductRequest {
+    string barcode = 1;
+}
+
+
+//////////////////////
+// Responses
+//////////////////////
+
+message GetProductResponse {
+    Producto producto = 1;
+}
+
+message UpdateProductResponse {
+    bool ok = 1;
+}
+
+message DeleteProductResponse {
+    bool ok = 1;
 }
 
 message CreateProductResponse {

@@ -1,3 +1,5 @@
+#pragma once
+
 #include <cstdint>
 #include "features/product/domain/Product.h"
 
