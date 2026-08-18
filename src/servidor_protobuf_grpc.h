@@ -2,9 +2,9 @@
 
 #include <vector>
 #include <string>
-#include "core/database/S3ObjectStorage/OjectStorage.h"
-#include "features/product/domain/ProductRepository.h"
-#include "punto_de_venta.grpc.pb.h"
+// #include "core/database/S3ObjectStorage/OjectStorage.h"
+// #include "features/product/domain/ProductRepository.h"
+// #include "punto_de_venta.grpc.pb.h"
 
 
 #ifdef _WIN32
@@ -17,53 +17,3 @@ SERVIDOR_PROTOBUF_GRPC_EXPORT void servidor_protobuf_grpc();
 SERVIDOR_PROTOBUF_GRPC_EXPORT void servidor_protobuf_grpc_print_vector(const std::vector<std::string> &strings);
 
 SERVIDOR_PROTOBUF_GRPC_EXPORT void server();
-
-namespace puntodeventa::v1{
-
-	class SERVIDOR_PROTOBUF_GRPC_EXPORT ProductServiceImpl final 
-		: public ProductService::Service {
-
-			public:
-
-				explicit ProductServiceImpl(
-						::puntodeventa::product::ProductRepository& respository,
-						::puntodeventa::storage::ObjectStorage& objectStorage
-						);
-
-				grpc::Status CreateProduct(
-						grpc::ServerContext* context,
-						const CreateProductRequest* request,
-						CreateProductResponse* response
-						) override;
-
-				grpc::Status GetProductById(
-						grpc::ServerContext* context,
-						const GetProductByIdRequest* request,
-						GetProductResponse *response
-						) override; 
-
-				grpc::Status GetProductByBarcode(
-						grpc::ServerContext* context,
-						const GetProductByBarcodeRequest* request,
-						GetProductResponse *response
-						) override; 
-
-				grpc::Status UpdateProduct(
-						grpc::ServerContext* context,
-						const UpdateProductRequest* request,
-						UpdateProductResponse* response
-						) override; 
-
-				grpc::Status DeleteProduct(
-						grpc::ServerContext* context,
-						const DeleteProductRequest* request,
-						DeleteProductResponse* response
-						) override; 
-
-
-			private:
-				puntodeventa::product::ProductRepository& repository_;
-				puntodeventa::storage::ObjectStorage& objectStorage_;
-
-		};
-}

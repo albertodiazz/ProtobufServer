@@ -3,8 +3,11 @@
 #include <aws/core/auth/AWSCredentials.h>
 #include <aws/core/utils/memory/stl/AWSStringStream.h>
 #include <aws/s3/model/PutObjectRequest.h>
+#include <aws/s3/model/GetObjectRequest.h>
 
 #include <stdexcept>
+#include <sstream>
+#include <iostream>
 
 namespace puntodeventa::storage {
 
@@ -39,11 +42,6 @@ std::string S3ObjectStorage::putObject(
     std::string_view data,
     const std::string& contentType
 ) {
-    // std::cout << "[S3-1] putObject inicio\n";
-    // std::cout << "[S3-2] bucket: " << bucket_ << '\n';
-    // std::cout << "[S3-3] key: " << key << '\n';
-    // std::cout << "[S3-4] contentType: " << contentType << '\n';
-    // std::cout << "[S3-5] size: " << data.size() << '\n';
 
     Aws::S3::Model::PutObjectRequest request;
 
@@ -96,6 +94,69 @@ std::string S3ObjectStorage::putObject(
     std::cout << "[S3-9] Upload OK\n";
 
     return key;
+}
+
+std::string S3ObjectStorage::getObject(
+    const std::string& key
+) {
+    Aws::S3::Model::GetObjectRequest request;
+
+    request.SetBucket(bucket_.c_str());
+    request.SetKey(key.c_str());
+
+    std::cout << "[S3-GET-1] llamando GetObject\n";
+
+    auto outcome =
+        client_.GetObject(request);
+
+    std::cout << "[S3-GET-2] GetObject regreso\n";
+
+    if (!outcome.IsSuccess()) {
+        const auto& error =
+            outcome.GetError();
+
+        std::cerr
+            << "S3 Exception: "
+            << error.GetExceptionName()
+            << '\n';
+
+        std::cerr
+            << "S3 Message: "
+            << error.GetMessage()
+            << '\n';
+
+        std::cerr
+            << "HTTP code: "
+            << static_cast<int>(
+                error.GetResponseCode()
+            )
+            << '\n';
+
+        throw std::runtime_error(
+            "Error obteniendo objeto de S3: " +
+            std::string(
+                error.GetMessage().c_str()
+            )
+        );
+    }
+
+    std::cout << "[S3-GET-3] Download OK\n";
+
+    auto& stream =
+        outcome.GetResult().GetBody();
+
+    std::ostringstream buffer;
+    buffer << stream.rdbuf();
+
+    std::string data =
+        buffer.str();
+
+    std::cout
+        << "[S3-GET-4] bytes recibidos: "
+        << data.size()
+        << '\n';
+
+    return data;
 }
 
 }

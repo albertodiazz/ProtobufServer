@@ -19,6 +19,10 @@ namespace puntodeventa::storage {
 					const std::string& contentType
 					) override;
 
+			std::string getObject(
+					const std::string& key
+					) override;
+
 		private:
 			Aws::S3::S3Client client_;
 			std::string bucket_;

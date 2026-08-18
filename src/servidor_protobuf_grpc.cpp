@@ -2,20 +2,6 @@
 #include "servidor_protobuf_grpc.h"
 
 
-namespace puntodeventa::v1 {
-
-	ProductServiceImpl::ProductServiceImpl(
-			::puntodeventa::product::ProductRepository& repository,
-			::puntodeventa::storage::ObjectStorage& objectStorage 
-			)
-		: repository_(repository),
-		objectStorage_(objectStorage)
-	{
-	}
-
-}
-
-
 void servidor_protobuf_grpc(){
 
 

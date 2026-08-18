@@ -1,23 +1,29 @@
 #pragma once
 
+#include <optional>
 #include <pqxx/pqxx>
 
 #include "features/product/domain/ProductRepository.h"
 
 namespace puntodeventa::product {
 
-class SqlProductRepository final : public ProductRepository {
-public:
-    explicit SqlProductRepository(
-        pqxx::connection& connection
-    );
+	class SqlProductRepository final : public ProductRepository {
+		public:
 
-    int64_t create(
-        const Producto& producto
-    ) override;
+			explicit SqlProductRepository(
+					pqxx::connection& connection
+					);
 
-private:
-    pqxx::connection& connection_;
-};
+			int64_t create(
+					const Producto& producto
+					) override;
+
+			std::optional<Producto>	 getByBarcode(
+					const std::string& barcode 
+					) override;
+
+		private:
+			pqxx::connection& connection_;
+	};
 
 }

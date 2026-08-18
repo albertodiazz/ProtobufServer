@@ -61,7 +61,6 @@ namespace puntodeventa::v1{
 			private:
 				puntodeventa::product::ProductRepository& repository_;
 				puntodeventa::storage::ObjectStorage& objectStorage_;
-				::puntodeventa::product::CreateProduct& createProduct_;
 
 		};
 }
