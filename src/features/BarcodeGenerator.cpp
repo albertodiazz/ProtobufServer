@@ -3,19 +3,26 @@
 
 namespace puntodeventa {
 
-	std::string generadorBarcode(){
+	std::string generadorBarcode() {
 
 		static std::random_device rd;
 		static std::mt19937_64 generator{rd()};
-		static std::uniform_int_distribution<int> distribution{0, 9};
+
+		static std::uniform_int_distribution<int> firstDigitDistribution{1, 9};
+		static std::uniform_int_distribution<int> digitDistribution{0, 9};
 
 		std::string barcode;
 		barcode.reserve(13);
 
-		// Generar los primeros 12 dígitos.
-		for (int i = 0; i < 12; ++i) {
+		// Primer dígito: nunca puede ser 0.
+		barcode += static_cast<char>(
+				'0' + firstDigitDistribution(generator)
+				);
+
+		// Generar los siguientes 11 dígitos.
+		for (int i = 1; i < 12; ++i) {
 			barcode += static_cast<char>(
-					'0' + distribution(generator)
+					'0' + digitDistribution(generator)
 					);
 		}
 
