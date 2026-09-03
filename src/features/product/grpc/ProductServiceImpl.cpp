@@ -9,6 +9,7 @@
 #include "features/BarcodeGenerator.h"
 #include "features/product/domain/Product.h"
 #include "core/image/ImageFormatDetector.h"
+#include "features/product/application/ProductValidator.h"
 
 #include <string>
 
@@ -48,59 +49,40 @@ namespace puntodeventa::v1 {
 		std::string barcode =
 			puntodeventa::generadorBarcode();
 
-		std::cout << "[2] Barcode generado: "
-			<< barcode << '\n';
+		std::string extension;
+		std::string contentType;
+
+		const std::string& imageData =
+    request->imagen().data();
+
+		const auto validation = 
+			ProductValidator::validate(
+					request->nombre(),
+					request->descripcion(),
+					request->precio(),
+					request->costo(),
+					imageData,
+					puntodeventa::image::detectImageFormat(imageData),
+					extension,
+					contentType
+					);
+
+		if(validation){
+			const std::string message = 
+				ProductValidator::validationErrorMessage(*validation);
+			std::cout << "Error: " << message << request->precio() << std::endl;
+			return grpc::Status{
+					grpc::StatusCode::INVALID_ARGUMENT,
+						message
+			};
+		}
 
 		std::string imageKey;
 
 		if (request->has_imagen()) {
 
-			std::cout << "[3] Imagen presente\n";
-
 			const std::string& imageData =
 				request->imagen().data();
-
-			std::cout << "[4] Imagen size: "
-				<< imageData.size()
-				<< " bytes\n";
-
-			if (imageData.empty()) {
-				return grpc::Status{
-					grpc::StatusCode::INVALID_ARGUMENT,
-						"La imagen esta vacia"
-				};
-			}
-
-			const auto format =
-				puntodeventa::image::detectImageFormat(imageData);
-
-			std::cout << "[5] Formato detectado\n";
-
-			std::string extension;
-			std::string contentType;
-
-			switch (format) {
-				case puntodeventa::image::ImageFormat::PNG:
-					extension = ".png";
-					contentType = "image/png";
-					break;
-
-				case puntodeventa::image::ImageFormat::JPEG:
-					extension = ".jpg";
-					contentType = "image/jpeg";
-					break;
-
-				case puntodeventa::image::ImageFormat::WEBP:
-					extension = ".webp";
-					contentType = "image/webp";
-					break;
-
-				default:
-					return grpc::Status{
-						grpc::StatusCode::INVALID_ARGUMENT,
-							"Formato de imagen no soportado"
-					};
-			}
 
 			std::cout << "[6] Antes de S3\n";
 
@@ -126,8 +108,6 @@ namespace puntodeventa::v1 {
 				.image_key = imageKey
 		};
 
-		std::cout << "[8] Antes de PostgreSQL\n";
-
 		const int64_t productoId =
 			repository_.create(producto);
 
@@ -136,7 +116,7 @@ namespace puntodeventa::v1 {
 
 		response->set_ok(true);
 		response->set_mensaje(
-				"Producto recibido correctamente"
+				"El producto fue guardado correctamente"
 				);
 		response->set_product_id(productoId);
 		response->set_internal_barcode(barcode);
