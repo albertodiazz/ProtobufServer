@@ -66,18 +66,12 @@ message CreateProductRequest {
 }
 
 message UpdateProductRequest {
-    string barcode = 1;
-    string nombre = 2;
-    int32 precio = 3;
-    int32 costo = 4;
-    string descripcion = 5;
-    ProductImage imagen = 6;
+  Producto producto = 1;
 }
 
 message DeleteProductRequest {
     string barcode = 1;
 }
-
 
 //////////////////////
 // Responses

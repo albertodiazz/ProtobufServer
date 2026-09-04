@@ -18,6 +18,10 @@ namespace puntodeventa::product {
 					const Producto& producto
 					) override;
 
+			std::optional<Producto> update(
+					const Producto& producto 
+					) override;
+
 			std::optional<Producto>	 getByBarcode(
 					const std::string& barcode 
 					) override;

@@ -11,7 +11,9 @@ namespace puntodeventa::v1 {
 		InvalidPrice, // No pueden ser negativos ni < 0
 		InvalidCost, // No pueden ser negativos ni < 0
 		EmptyImage,
-		InvalidFormatImage
+		InvalidFormatImage,
+		InvalidBarCode,
+		EmpytBarCode	
 	};
 
 	class ProductValidator {
@@ -27,6 +29,10 @@ namespace puntodeventa::v1 {
 					image::ImageFormat formato_imagen,
 					std::string& extension,
 					std::string& contentType
+					);
+
+			static std::optional<ProductValidationError> validateBarCode(
+					const std::string& barcode
 					);
 
 			static std::string validationErrorMessage(

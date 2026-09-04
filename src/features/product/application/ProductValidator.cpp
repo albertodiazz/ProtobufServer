@@ -53,6 +53,50 @@ namespace puntodeventa::v1 {
 			return std::nullopt;
 		}
 
+	std::optional<ProductValidationError> 
+		ProductValidator::validateBarCode(
+				const std::string& barcode 
+				){
+
+			if(barcode.empty()){
+				return ProductValidationError::EmpytBarCode;
+			}
+
+			if (barcode.length() != 13) {
+				return ProductValidationError::InvalidBarCode;
+			}
+
+			if (barcode[0] == '0') {
+				return ProductValidationError::InvalidBarCode;
+			}
+
+			for (char digit : barcode) {
+				if (digit < '0' || digit > '9') {
+					return ProductValidationError::InvalidBarCode;
+				}
+			}
+
+			// Validar checksum EAN-13
+			int suma = 0;
+			for (int i = 0; i < 12; ++i) {
+				const int digito = barcode[i] - '0';
+				if (i % 2 == 0) {
+					suma += digito;
+				} else {
+					suma += digito * 3;
+				}
+			}
+			const int checksumEsperado =
+				(10 - (suma % 10)) % 10;
+			const int checksumRecibido =
+				barcode[12] - '0';
+			if (checksumEsperado != checksumRecibido) {
+				return ProductValidationError::InvalidBarCode;
+			}
+
+			return std::nullopt;
+		}
+
 	std::string ProductValidator::validationErrorMessage(
 			ProductValidationError error
 			){
@@ -72,6 +116,12 @@ namespace puntodeventa::v1 {
 
 			case ProductValidationError::InvalidFormatImage:
 				return "El formato de la imagen no es valido";
+
+			case ProductValidationError::InvalidBarCode:
+				return "El formato del Barcode es invalido debe ser EAN-13";
+
+			case ProductValidationError::EmpytBarCode:
+				return "El barcode no puede estar vacio";
 
 		}
 

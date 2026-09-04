@@ -14,6 +14,8 @@ namespace puntodeventa::product {
 
 			virtual int64_t create(const Producto& producto) = 0;
 
+			virtual std::optional<Producto> update(const Producto& producto) = 0;
+
 			virtual std::optional<Producto> getByBarcode(
 					const std::string& barcode
 					) = 0;
