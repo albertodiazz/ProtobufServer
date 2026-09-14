@@ -23,12 +23,47 @@ service ProductService {
 
     rpc DeleteProduct(DeleteProductRequest)
         returns (DeleteProductResponse);
+
+    rpc ListProducts(ListProductsRequest)
+    returns (ListProductsResponse);
+
 }
 
 
 //////////////////////
 // Models
 //////////////////////
+
+message ProductoResumen {
+    int64 product_id = 1;
+    string nombre = 2;
+    string barcode = 3;
+    int32 precio = 4;
+
+    // Imagen reducida para la tarjeta.
+    // Puede omitirse si todavía no hay miniatura.
+    ProductImage miniatura = 5;
+}
+
+message ListProductsRequest {
+    // Cantidad máxima solicitada.
+    // Reglas que implementaremos en el servidor:
+    // 0: usar 20.
+    // Negativo: INVALID_ARGUMENT.
+    // Mayor a 100: usar 100.
+    int32 page_size = 1;
+
+    // Vacío para la primera página.
+    // Después, enviar el next_page_token recibido.
+    string page_token = 2;
+}
+
+message ListProductsResponse {
+    repeated ProductoResumen productos = 1;
+
+    // Vacío cuando no quedan más páginas.
+    string next_page_token = 2;
+}
 
 message ProductImage {
     bytes data = 1;

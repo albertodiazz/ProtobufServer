@@ -17,6 +17,14 @@ find_package(libpqxx REQUIRED)
 # Conan genera protobuf-config.cmake y gRPCConfig.cmake.
 find_package(protobuf CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
+find_package(PkgConfig REQUIRED)
+
+pkg_check_modules(
+    VIPS
+    REQUIRED
+    IMPORTED_TARGET
+    "vips-cpp>=8.16"
+)
 
 list(APPEND CMAKE_PREFIX_PATH
     "$ENV{HOME}/.local/opt/aws-sdk-cpp"
@@ -185,6 +193,7 @@ target_link_libraries(${PROJECT_NAME}
 	pos_proto
 	libpqxx::pqxx
 	${AWSSDK_LINK_LIBRARIES}
+  PkgConfig::VIPS
 )
 
 # ---------------------------------------------------------------------------

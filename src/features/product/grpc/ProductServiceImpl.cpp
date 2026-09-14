@@ -10,6 +10,7 @@
 #include "features/product/domain/Product.h"
 #include "core/image/ImageFormatDetector.h"
 #include "features/product/application/ProductValidator.h"
+#include "core/image/ThumbailGenerator.h"
 
 #include <string>
 
@@ -87,8 +88,12 @@ namespace puntodeventa::v1 {
 		}
 
 		std::string imageKey;
+		std::string imageKey_thumbnail;
 
 		std::cout << "[6] Antes de S3\n";
+
+		ThumbnailGenerator thumbnailGenerator;
+		const Thumbnail thumbnail = thumbnailGenerator.generate(imageData);
 
 		imageKey = objectStorage_.putObject(
 				"products/" +
@@ -99,10 +104,20 @@ namespace puntodeventa::v1 {
 				contentType
 				);
 
+		imageKey_thumbnail = objectStorage_.putObject(
+				"products/" +
+				barcode +
+				"/thumb" +
+				thumbnail.extension,
+				thumbnail.data,
+				contentType
+				);
+
 		std::cout << "[7] S3 terminado. Key: "
 			<< imageKey << '\n';
 		// Ahora guardamos la referencias de S3
 		producto.image_key = imageKey;
+		producto.thumbnail_key = imageKey_thumbnail;
 		const int64_t productoId =
 			repository_.create(producto);
 
@@ -270,6 +285,11 @@ namespace puntodeventa::v1 {
 		/*
 		 * 5. Subir imagen
 		 */
+
+
+		ThumbnailGenerator thumbnailGenerator;
+		const Thumbnail thumbnail = thumbnailGenerator.generate(imageData);
+
 		const std::string imageKey =
 			objectStorage_.putObject(
 					"products/" +
@@ -279,6 +299,15 @@ namespace puntodeventa::v1 {
 					imageData,
 					contentType
 					);
+
+		const std::string imageKey_thumbnail = objectStorage_.putObject(
+				"products/" +
+				productoRequest.barcode() +
+				"/thumb" +
+				thumbnail.extension,
+				thumbnail.data,
+				contentType
+				);
 
 		std::cout
     << "[UPDATE-1] imageKey: "
@@ -294,7 +323,8 @@ namespace puntodeventa::v1 {
 				.descripcion = productoRequest.descripcion(),
 				.precio = productoRequest.precio(),
 				.costo = productoRequest.costo(),
-				.image_key = imageKey
+				.image_key = imageKey,
+				.thumbnail_key = imageKey_thumbnail
 		};
 
 		std::cout << "[UPDATE-2] Antes de PostgreSQL\n";

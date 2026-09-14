@@ -25,9 +25,10 @@ int64_t SqlProductRepository::create(
                 precio,
                 costo,
 								barcode,
-								image_key
+								image_key,
+								thumbnail_key
             )
-            VALUES ($1, $2, $3, $4, $5, $6)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING id
         )",
 			pqxx::params{
@@ -36,7 +37,8 @@ int64_t SqlProductRepository::create(
 			producto.precio,
 			producto.costo,
 			producto.barcode,
-			producto.image_key
+			producto.image_key,
+			producto.thumbnail_key
 			}
 			).one_row();
 
@@ -69,15 +71,17 @@ SqlProductRepository::update(
                         descripcion = $2,
                         precio = $3,
                         costo = $4,
-                        image_key = $5
-                    WHERE barcode = $6
+                        image_key = $5,
+                        thumbnail_key= $6
+                    WHERE barcode = $7
                     RETURNING
                         nombre,
                         barcode,
                         descripcion,
                         precio,
                         costo,
-                        image_key
+                        image_key,
+												thumbnail_key
                 )",
                 pqxx::params{
                     producto.nombre,
@@ -85,6 +89,7 @@ SqlProductRepository::update(
                     producto.precio,
                     producto.costo,
                     producto.image_key,
+										producto.thumbnail_key,
                     producto.barcode
                 }
             );
@@ -113,7 +118,8 @@ SqlProductRepository::update(
             .descripcion = row["descripcion"].as<std::string>(),
             .precio = row["precio"].as<int32_t>(),
             .costo = row["costo"].as<int32_t>(),
-            .image_key = row["image_key"].as<std::string>()
+            .image_key = row["image_key"].as<std::string>(),
+            .thumbnail_key = row["thumbnail_key"].as<std::string>()
         };
 
         std::cout << "[DB-UPDATE-6] antes commit\n";

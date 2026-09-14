@@ -12,6 +12,7 @@ namespace puntodeventa::product {
 		int32_t precio;
 		int32_t costo;
 		std::string image_key;
+		std::string thumbnail_key;
 	};
 
 }
