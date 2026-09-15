@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <cstdint>
 
 
 namespace puntodeventa::product {
@@ -14,5 +15,15 @@ namespace puntodeventa::product {
 		std::string image_key;
 		std::string thumbnail_key;
 	};
+
+
+	struct ProductoResumen {
+		std::int64_t product_id = 0;
+		std::string nombre; 
+		std::string barcode;
+		int32_t precio = 0;
+		std::string thumbnail_key;
+	};
+
 
 }

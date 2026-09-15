@@ -22,6 +22,11 @@ namespace puntodeventa::product {
 					const Producto& producto 
 					) override;
 
+			std::vector<ProductoResumen> listProducts(
+					std::int32_t limit,
+					std::optional<std::int64_t> beforeId
+					) override;
+
 			std::optional<Producto>	 getByBarcode(
 					const std::string& barcode 
 					) override;

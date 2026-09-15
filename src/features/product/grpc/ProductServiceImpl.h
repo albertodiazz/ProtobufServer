@@ -57,6 +57,12 @@ namespace puntodeventa::v1{
 						DeleteProductResponse* response
 						) override; 
 
+				grpc::Status ListProducts(
+						grpc::ServerContext* context,
+						const ListProductsRequest* request,
+						ListProductsResponse* response
+						) override;
+
 
 			private:
 				puntodeventa::product::ProductRepository& repository_;

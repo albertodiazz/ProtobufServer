@@ -4,21 +4,21 @@
 
 namespace puntodeventa::product {
 
-SqlProductRepository::SqlProductRepository(
-    pqxx::connection& connection
-)
-    : connection_(connection)
-{
-}
+	SqlProductRepository::SqlProductRepository(
+			pqxx::connection& connection
+			)
+		: connection_(connection)
+	{
+	}
 
-int64_t SqlProductRepository::create(
-		const Producto& producto
-		) {
+	int64_t SqlProductRepository::create(
+			const Producto& producto
+			) {
 
-	pqxx::work transaction{connection_};
+		pqxx::work transaction{connection_};
 
-	pqxx::row row = transaction.exec(
-			R"(
+		pqxx::row row = transaction.exec(
+				R"(
             INSERT INTO products (
                 nombre,
                 descripcion,
@@ -31,40 +31,40 @@ int64_t SqlProductRepository::create(
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING id
         )",
-			pqxx::params{
-			producto.nombre,
-			producto.descripcion,
-			producto.precio,
-			producto.costo,
-			producto.barcode,
-			producto.image_key,
-			producto.thumbnail_key
-			}
-			).one_row();
+				pqxx::params{
+				producto.nombre,
+				producto.descripcion,
+				producto.precio,
+				producto.costo,
+				producto.barcode,
+				producto.image_key,
+				producto.thumbnail_key
+				}
+		).one_row();
 
-	const int64_t productId =
-		row["id"].as<int64_t>();
+		const int64_t productId =
+			row["id"].as<int64_t>();
 
-	transaction.commit();
+		transaction.commit();
 
-	return productId;
-}
+		return productId;
+	}
 
-std::optional<Producto>
-SqlProductRepository::update(
-    const Producto& producto
-) {
-    try {
+	std::optional<Producto>
+		SqlProductRepository::update(
+				const Producto& producto
+				) {
+			try {
 
-        std::cout << "[DB-UPDATE-1] creando transaction\n";
+				std::cout << "[DB-UPDATE-1] creando transaction\n";
 
-        pqxx::work transaction{connection_};
+				pqxx::work transaction{connection_};
 
-        std::cout << "[DB-UPDATE-2] transaction creada\n";
+				std::cout << "[DB-UPDATE-2] transaction creada\n";
 
-        const pqxx::result result =
-            transaction.exec(
-                R"(
+				const pqxx::result result =
+					transaction.exec(
+							R"(
                     UPDATE products 
                     SET
                         nombre = $1,
@@ -83,72 +83,72 @@ SqlProductRepository::update(
                         image_key,
 												thumbnail_key
                 )",
-                pqxx::params{
-                    producto.nombre,
-                    producto.descripcion,
-                    producto.precio,
-                    producto.costo,
-                    producto.image_key,
-										producto.thumbnail_key,
-                    producto.barcode
-                }
-            );
+							pqxx::params{
+								producto.nombre,
+									producto.descripcion,
+									producto.precio,
+									producto.costo,
+									producto.image_key,
+									producto.thumbnail_key,
+									producto.barcode
+							}
+				);
 
-        std::cout
-            << "[DB-UPDATE-3] exec regreso. Rows: "
-            << result.size()
-            << '\n';
+				std::cout
+					<< "[DB-UPDATE-3] exec regreso. Rows: "
+					<< result.size()
+					<< '\n';
 
-        if (result.empty()) {
+				if (result.empty()) {
 
-            std::cout << "[DB-UPDATE-4] barcode no encontrado\n";
+					std::cout << "[DB-UPDATE-4] barcode no encontrado\n";
 
-            transaction.commit();
+					transaction.commit();
 
-            return std::nullopt;
-        }
+					return std::nullopt;
+				}
 
-        std::cout << "[DB-UPDATE-5] leyendo row\n";
+				std::cout << "[DB-UPDATE-5] leyendo row\n";
 
-        const auto& row = result[0];
+				const auto& row = result[0];
 
-        Producto productoActualizado{
-            .nombre = row["nombre"].as<std::string>(),
-            .barcode = row["barcode"].as<std::string>(),
-            .descripcion = row["descripcion"].as<std::string>(),
-            .precio = row["precio"].as<int32_t>(),
-            .costo = row["costo"].as<int32_t>(),
-            .image_key = row["image_key"].as<std::string>(),
-            .thumbnail_key = row["thumbnail_key"].as<std::string>()
-        };
+				Producto productoActualizado{
+					.nombre = row["nombre"].as<std::string>(),
+						.barcode = row["barcode"].as<std::string>(),
+						.descripcion = row["descripcion"].as<std::string>(),
+						.precio = row["precio"].as<int32_t>(),
+						.costo = row["costo"].as<int32_t>(),
+						.image_key = row["image_key"].as<std::string>(),
+						.thumbnail_key = row["thumbnail_key"].as<std::string>()
+				};
 
-        std::cout << "[DB-UPDATE-6] antes commit\n";
+				std::cout << "[DB-UPDATE-6] antes commit\n";
 
-        transaction.commit();
+				transaction.commit();
 
-        std::cout << "[DB-UPDATE-7] commit terminado\n";
+				std::cout << "[DB-UPDATE-7] commit terminado\n";
 
-        return productoActualizado;
+				return productoActualizado;
 
-    } catch (const std::exception& e) {
+			} catch (const std::exception& e) {
 
-        std::cerr
-            << "[DB-UPDATE-ERROR] "
-            << e.what()
-            << '\n';
+				std::cerr
+					<< "[DB-UPDATE-ERROR] "
+					<< e.what()
+					<< '\n';
 
-        throw;
-    }
-}
+				throw;
+			}
+		}
 
 
-std::optional<Producto> SqlProductRepository::getByBarcode(
-		const std::string& barcode
-		) {
-	pqxx::work tx{connection_};
+	std::optional<Producto> SqlProductRepository::getByBarcode(
+			const std::string& barcode
+			) {
+		pqxx::work tx{connection_};
 
-	const pqxx::result result = tx.exec(
-			R"(
+		const pqxx::result result = tx.exec(
+				R"(
             SELECT
                 nombre,
                 descripcion,
@@ -160,27 +160,89 @@ std::optional<Producto> SqlProductRepository::getByBarcode(
             WHERE barcode = $1
             LIMIT 1
         )",
-			pqxx::params{barcode}
-			);
+				pqxx::params{barcode}
+				);
 
-	if (result.empty()) {
-		return std::nullopt;
+		if (result.empty()) {
+			return std::nullopt;
+		}
+
+		const auto& row = result[0];
+
+		Producto producto{
+			.nombre = row["nombre"].as<std::string>(),
+				.barcode = row["barcode"].as<std::string>(),
+				.descripcion = row["descripcion"].as<std::string>(),
+				.precio = row["precio"].as<int32_t>(),
+				.costo = row["costo"].as<int32_t>(),
+				.image_key = row["image_key"].is_null()
+					? std::string{}
+			: row["image_key"].as<std::string>()
+		};
+
+		return producto;
 	}
 
-	const auto& row = result[0];
+	std::vector<ProductoResumen> SqlProductRepository::listProducts(
+			std::int32_t limit,
+			std::optional<std::int64_t> beforeId
+			) {
+		if (limit < 1 || limit > 101) {
+			throw std::invalid_argument("limit debe estar entre 1 y 101");
+		}
 
-	Producto producto{
-		.nombre = row["nombre"].as<std::string>(),
-			.barcode = row["barcode"].as<std::string>(),
-			.descripcion = row["descripcion"].as<std::string>(),
-			.precio = row["precio"].as<int32_t>(),
-			.costo = row["costo"].as<int32_t>(),
-			.image_key = row["image_key"].is_null()
-				? std::string{}
-		: row["image_key"].as<std::string>()
-	};
+		if (beforeId && *beforeId <= 0) {
+			throw std::invalid_argument("beforeId debe ser positivo");
+		}
 
-	return producto;
-}
+		pqxx::work transaction{connection_};
+
+		const pqxx::result result = beforeId
+			? transaction.exec(
+					R"(
+                SELECT
+                    id,
+                    nombre,
+                    barcode,
+                    precio,
+                    COALESCE(thumbnail_key, '') AS thumbnail_key
+                FROM products
+                WHERE id < $1
+                ORDER BY id DESC
+                LIMIT $2
+            )",
+					pqxx::params{*beforeId, limit}
+					)
+			: transaction.exec(
+					R"(
+                SELECT
+                    id,
+                    nombre,
+                    barcode,
+                    precio,
+                    COALESCE(thumbnail_key, '') AS thumbnail_key
+                FROM products
+                ORDER BY id DESC
+                LIMIT $1
+            )",
+					pqxx::params{limit}
+					);
+
+		std::vector<ProductoResumen> productos;
+		productos.reserve(result.size());
+
+		for (const auto& row : result) {
+			productos.push_back(ProductoResumen{
+					.product_id = row["id"].as<std::int64_t>(),
+					.nombre = row["nombre"].as<std::string>(),
+					.barcode = row["barcode"].as<std::string>(),
+					.precio = row["precio"].as<std::int32_t>(),
+					.thumbnail_key = row["thumbnail_key"].as<std::string>()
+					});
+		}
+
+		transaction.commit();
+		return productos;
+	}
 
 }
