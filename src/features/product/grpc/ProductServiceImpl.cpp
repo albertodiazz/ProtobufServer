@@ -24,6 +24,7 @@ namespace {
 		target->set_descripcion(source.descripcion);
 		target->set_precio(source.precio);
 		target->set_costo(source.costo);
+		target->set_cantidad(source.cantidad);
 	}
 }
 
@@ -62,7 +63,8 @@ namespace puntodeventa::v1 {
 				.descripcion = request->descripcion(),
 				.precio = request->precio(),
 				.costo = request->costo(),
-				.image_key = imageData 
+				.image_key = imageData,
+				.cantidad = request->cantidad()
 		};
 
 		const auto validation = 
@@ -74,7 +76,8 @@ namespace puntodeventa::v1 {
 					producto.image_key,
 					puntodeventa::image::detectImageFormat(producto.image_key),
 					extension,
-					contentType
+					contentType,
+					producto.cantidad
 					);
 
 		if(validation){
@@ -260,7 +263,8 @@ namespace puntodeventa::v1 {
 						imageData
 						),
 					extension,
-					contentType
+					contentType,
+					productoRequest.cantidad()
 					);
 
 		if (validation) {
@@ -324,7 +328,8 @@ namespace puntodeventa::v1 {
 				.precio = productoRequest.precio(),
 				.costo = productoRequest.costo(),
 				.image_key = imageKey,
-				.thumbnail_key = imageKey_thumbnail
+				.thumbnail_key = imageKey_thumbnail,
+				.cantidad = productoRequest.cantidad() 
 		};
 
 		std::cout << "[UPDATE-2] Antes de PostgreSQL\n";
@@ -455,6 +460,7 @@ namespace puntodeventa::v1 {
 				item.set_nombre(source.nombre);
 				item.set_barcode(source.barcode);
 				item.set_precio(source.precio);
+				item.set_cantidad(source.cantidad);
 
 				if (!source.thumbnail_key.empty()) {
 					try {

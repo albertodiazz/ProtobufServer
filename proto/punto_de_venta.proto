@@ -39,6 +39,7 @@ message ProductoResumen {
     string nombre = 2;
     string barcode = 3;
     int32 precio = 4;
+    int32 cantidad = 6;
 
     // Imagen reducida para la tarjeta.
     // Puede omitirse si todavía no hay miniatura.
@@ -77,6 +78,7 @@ message Producto {
     int32 precio = 5;
     int32 costo = 6;
     ProductImage imagen = 7;
+    int32 cantidad = 8;
 }
 
 
@@ -98,6 +100,7 @@ message CreateProductRequest {
     int32 costo = 3;
     string descripcion = 4;
     ProductImage imagen = 5;
+    int32 cantidad = 6;
 }
 
 message UpdateProductRequest {

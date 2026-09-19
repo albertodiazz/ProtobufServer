@@ -26,9 +26,10 @@ namespace puntodeventa::product {
                 costo,
 								barcode,
 								image_key,
-								thumbnail_key
+								thumbnail_key,
+								cantidad
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING id
         )",
 				pqxx::params{
@@ -38,7 +39,8 @@ namespace puntodeventa::product {
 				producto.costo,
 				producto.barcode,
 				producto.image_key,
-				producto.thumbnail_key
+				producto.thumbnail_key,
+				producto.cantidad
 				}
 		).one_row();
 
@@ -72,8 +74,9 @@ namespace puntodeventa::product {
                         precio = $3,
                         costo = $4,
                         image_key = $5,
-                        thumbnail_key= $6
-                    WHERE barcode = $7
+                        thumbnail_key= $6,
+												cantidad = $7
+                    WHERE barcode = $8
                     RETURNING
                         nombre,
                         barcode,
@@ -81,7 +84,8 @@ namespace puntodeventa::product {
                         precio,
                         costo,
                         image_key,
-												thumbnail_key
+												thumbnail_key,
+												cantidad
                 )",
 							pqxx::params{
 								producto.nombre,
@@ -90,6 +94,7 @@ namespace puntodeventa::product {
 									producto.costo,
 									producto.image_key,
 									producto.thumbnail_key,
+									producto.cantidad,
 									producto.barcode
 							}
 				);
@@ -119,7 +124,8 @@ namespace puntodeventa::product {
 						.precio = row["precio"].as<int32_t>(),
 						.costo = row["costo"].as<int32_t>(),
 						.image_key = row["image_key"].as<std::string>(),
-						.thumbnail_key = row["thumbnail_key"].as<std::string>()
+						.thumbnail_key = row["thumbnail_key"].as<std::string>(),
+						.cantidad = row["cantidad"].as<int32_t>()
 				};
 
 				std::cout << "[DB-UPDATE-6] antes commit\n";
@@ -155,7 +161,8 @@ namespace puntodeventa::product {
                 precio,
                 costo,
 								barcode,
-                image_key
+                image_key,
+								cantidad
             FROM products
             WHERE barcode = $1
             LIMIT 1
@@ -169,6 +176,7 @@ namespace puntodeventa::product {
 
 		const auto& row = result[0];
 
+
 		Producto producto{
 			.nombre = row["nombre"].as<std::string>(),
 				.barcode = row["barcode"].as<std::string>(),
@@ -177,7 +185,8 @@ namespace puntodeventa::product {
 				.costo = row["costo"].as<int32_t>(),
 				.image_key = row["image_key"].is_null()
 					? std::string{}
-			: row["image_key"].as<std::string>()
+			: row["image_key"].as<std::string>(),
+				.cantidad = row["cantidad"].as<int32_t>()
 		};
 
 		return producto;
@@ -205,6 +214,7 @@ namespace puntodeventa::product {
                     nombre,
                     barcode,
                     precio,
+										cantidad,
                     COALESCE(thumbnail_key, '') AS thumbnail_key
                 FROM products
                 WHERE id < $1
@@ -220,6 +230,7 @@ namespace puntodeventa::product {
                     nombre,
                     barcode,
                     precio,
+										cantidad,
                     COALESCE(thumbnail_key, '') AS thumbnail_key
                 FROM products
                 ORDER BY id DESC
@@ -237,7 +248,8 @@ namespace puntodeventa::product {
 					.nombre = row["nombre"].as<std::string>(),
 					.barcode = row["barcode"].as<std::string>(),
 					.precio = row["precio"].as<std::int32_t>(),
-					.thumbnail_key = row["thumbnail_key"].as<std::string>()
+					.thumbnail_key = row["thumbnail_key"].as<std::string>(),
+					.cantidad = row["cantidad"].as<std::int32_t>()
 					});
 		}
 

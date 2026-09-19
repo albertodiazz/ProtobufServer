@@ -14,6 +14,7 @@ namespace puntodeventa::product {
 		int32_t costo;
 		std::string image_key;
 		std::string thumbnail_key;
+		int32_t cantidad;
 	};
 
 
@@ -23,6 +24,7 @@ namespace puntodeventa::product {
 		std::string barcode;
 		int32_t precio = 0;
 		std::string thumbnail_key;
+		int32_t cantidad = 0;
 	};
 
 

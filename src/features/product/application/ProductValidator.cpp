@@ -11,7 +11,8 @@ namespace puntodeventa::v1 {
 				const std::string& image,
 				image::ImageFormat formato_imagen,
 				std::string& extension,
-				std::string& contentType
+				std::string& contentType,
+				int32_t cantidad
 				) {
 
 			if (nombre.empty()) {
@@ -28,6 +29,10 @@ namespace puntodeventa::v1 {
 
 			if (image.empty()){
 				return ProductValidationError::EmptyImage;
+			}
+
+			if (cantidad < 0){
+				return ProductValidationError::InvalidCantidad;
 			}
 
 			switch (formato_imagen) {
@@ -122,6 +127,9 @@ namespace puntodeventa::v1 {
 
 			case ProductValidationError::EmpytBarCode:
 				return "El barcode no puede estar vacio";
+
+			case ProductValidationError::InvalidCantidad:
+				return "La cantidad no puede ser negativa";
 
 		}
 
