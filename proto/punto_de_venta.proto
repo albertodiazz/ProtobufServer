@@ -6,6 +6,68 @@ option java_multiple_files = true;
 option java_package = "com.alffy.puntodeventa.grpc";
 option java_outer_classname = "ConexionProto";
 
+service SaleService {
+
+    rpc CreateSale(CreateSaleRequest)
+        returns (CreateSaleResponse);
+}
+
+
+enum PaymentMethod {
+    PAYMENT_METHOD_UNSPECIFIED = 0;
+    PAYMENT_METHOD_DEBIT = 1;
+    PAYMENT_METHOD_CREDIT = 2;
+}
+
+
+message SaleItemRequest {
+    string barcode = 1;
+    int32 cantidad = 2;
+
+    // Precio establecido al momento de realizar la venta.
+    int32 precio_unitario = 3;
+}
+
+
+message CreateSaleRequest {
+
+    repeated SaleItemRequest items = 1;
+
+    // Identificador generado por el cliente para esta
+    // operación de venta.
+    //
+    // Si la misma venta se reintenta, debe reutilizarse
+    // exactamente el mismo request_id.
+    string request_id = 2;
+
+    PaymentMethod payment_method = 3;
+}
+
+
+message SaleItem {
+    int64 product_id = 1;
+    string barcode = 2;
+    string nombre = 3;
+    int32 cantidad = 4;
+    int32 precio_unitario = 5;
+    int64 subtotal = 6;
+}
+
+
+message CreateSaleResponse {
+    bool ok = 1;
+    int64 sale_id = 2;
+    int64 total = 3;
+    repeated SaleItem items = 4;
+
+    PaymentMethod payment_method = 5;
+
+    // Útil para que el cliente pueda relacionar
+    // la respuesta con la operación original.
+    string request_id = 6;
+}
+
+/////////////////////////////////////////////////////////////
 
 service ProductService {
 

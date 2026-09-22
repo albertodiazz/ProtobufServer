@@ -2,7 +2,10 @@
 #include "core/database/DataBaseConnection.h"
 #include "core/database/S3ObjectStorage/S3Config.h"
 #include "core/database/S3ObjectStorage/S3ObjectStorage.h"
+
 #include "features/product/data/SqlProductRepository.h"
+#include "features/product/data/SqlSaleRepository.h"
+
 #include "servidor_protobuf_grpc.h"
 #include <vector>
 #include <string>
@@ -13,6 +16,7 @@
 
 
 #include "features/product/grpc/ProductServiceImpl.h"
+#include "features/product/grpc/SaleServiceImpl.h"
 
 
 int main(int argc, char* argv[]) {
@@ -44,9 +48,20 @@ int main(int argc, char* argv[]) {
 		database.get()
 	};
 
+	puntodeventa::sale::SqlSaleRepository saleRepository{
+		database.get()
+	};
+
+	//////////////////////////////////
+	//Servicios
+	//////////////////////////////////
 	puntodeventa::v1::ProductServiceImpl servicioProducto{
 		productRepository,
 			objectStorage
+	};
+
+	puntodeventa::v1::SaleServiceImpl servicioSale{
+	 saleRepository	
 	};
 
 
@@ -59,7 +74,9 @@ int main(int argc, char* argv[]) {
 			server_addres,
 			grpc::InsecureServerCredentials()
 			);
+
 	builder.RegisterService(&servicioProducto);
+	builder.RegisterService(&servicioSale);
 
 	std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
 	std::cout << "Server listening on: " << server_addres << std::endl;
