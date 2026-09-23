@@ -471,6 +471,7 @@ CreateSaleResult SqlSaleRepository::create(
                         cantidad
                     FROM products
                     WHERE barcode = $1
+										AND active = TRUE
                     FOR UPDATE
                 )",
                 pqxx::params{

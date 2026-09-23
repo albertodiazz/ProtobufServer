@@ -26,6 +26,10 @@ namespace puntodeventa::product {
 					const std::string& barcode
 					) = 0;
 
+			virtual bool deleteByBarcode(
+					const std::string& barcode
+					) = 0;
+
 	};
 
 }

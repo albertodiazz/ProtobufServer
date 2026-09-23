@@ -77,6 +77,7 @@ namespace puntodeventa::product {
                         thumbnail_key= $6,
 												cantidad = $7
                     WHERE barcode = $8
+										AND active = TRUE
                     RETURNING
                         nombre,
                         barcode,
@@ -165,6 +166,7 @@ namespace puntodeventa::product {
 								cantidad
             FROM products
             WHERE barcode = $1
+						AND active = TRUE
             LIMIT 1
         )",
 				pqxx::params{barcode}
@@ -218,6 +220,7 @@ namespace puntodeventa::product {
                     COALESCE(thumbnail_key, '') AS thumbnail_key
                 FROM products
                 WHERE id < $1
+								AND active = TRUE
                 ORDER BY id DESC
                 LIMIT $2
             )",
@@ -233,6 +236,7 @@ namespace puntodeventa::product {
 										cantidad,
                     COALESCE(thumbnail_key, '') AS thumbnail_key
                 FROM products
+								WHERE active = TRUE
                 ORDER BY id DESC
                 LIMIT $1
             )",
@@ -255,6 +259,109 @@ namespace puntodeventa::product {
 
 		transaction.commit();
 		return productos;
+	}
+
+	bool SqlProductRepository::deleteByBarcode(
+			const std::string& barcode
+			) {
+
+		pqxx::work transaction{connection_};
+
+
+		/*
+		 * 1. Buscar y bloquear el producto.
+		 *
+		 * Esto también evita que una venta concurrente
+		 * modifique este mismo producto mientras
+		 * decidimos qué tipo de borrado hacer.
+		 */
+		const pqxx::result productResult =
+			transaction.exec(
+					R"(
+                SELECT id
+                FROM products
+                WHERE barcode = $1
+                FOR UPDATE
+            )",
+					pqxx::params{
+					barcode
+					}
+					);
+
+
+		if (productResult.empty()) {
+			return false;
+		}
+
+
+		const std::int64_t productId =
+			productResult[0]["id"]
+			.as<std::int64_t>();
+
+
+		/*
+		 * 2. Comprobar si existe historial de ventas.
+		 */
+		const pqxx::result saleResult =
+			transaction.exec(
+					R"(
+                SELECT 1
+                FROM sale_items
+                WHERE product_id = $1
+                LIMIT 1
+            )",
+					pqxx::params{
+					productId
+					}
+					);
+
+
+		const bool hasSales =
+			!saleResult.empty();
+
+
+		/*
+		 * 3. Si ya fue vendido:
+		 *    soft delete.
+		 */
+		if (hasSales) {
+
+			transaction.exec(
+					R"(
+                UPDATE products
+                SET active = FALSE
+                WHERE id = $1
+            )",
+					pqxx::params{
+					productId
+					}
+					);
+
+
+			transaction.commit();
+
+			return true;
+		}
+
+
+		/*
+		 * 4. Si nunca fue vendido:
+		 *    borrado físico.
+		 */
+		transaction.exec(
+				R"(
+            DELETE FROM products
+            WHERE id = $1
+        )",
+				pqxx::params{
+				productId
+				}
+				);
+
+
+		transaction.commit();
+
+		return true;
 	}
 
 }

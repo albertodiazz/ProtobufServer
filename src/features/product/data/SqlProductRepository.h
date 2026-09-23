@@ -31,6 +31,10 @@ namespace puntodeventa::product {
 					const std::string& barcode 
 					) override;
 
+			bool deleteByBarcode(
+					const std::string& barcode
+					) override;
+
 		private:
 			pqxx::connection& connection_;
 	};

@@ -363,15 +363,87 @@ namespace puntodeventa::v1 {
 		};
 	} 
 
+
 	grpc::Status ProductServiceImpl::DeleteProduct(
 			grpc::ServerContext* context,
 			const DeleteProductRequest* request,
 			DeleteProductResponse* response
 			) {
-		return grpc::Status{
-			grpc::StatusCode::UNIMPLEMENTED,
-			"DeleteProduct no implementado"
-		};
+
+		/*
+		 * 1. Comprobar cancelación antes de operar.
+		 */
+		if (context->IsCancelled()) {
+
+			return grpc::Status{
+				grpc::StatusCode::CANCELLED,
+				"Petición cancelada"
+			};
+		}
+
+
+		/*
+		 * 2. Obtener barcode.
+		 */
+		const std::string barcode =
+			request->barcode();
+
+
+		/*
+		 * 3. Validar barcode con la misma regla
+		 *    que ya utilizas en los otros endpoints.
+		 */
+		const auto barcodeValidation =
+			ProductValidator::validateBarCode(
+					barcode
+					);
+
+
+		if (barcodeValidation) {
+
+			const std::string message =
+				ProductValidator::validationErrorMessage(
+						*barcodeValidation
+						);
+
+			return grpc::Status{
+				grpc::StatusCode::INVALID_ARGUMENT,
+					message
+			};
+		}
+
+
+		/*
+		 * 4. Eliminar producto.
+		 */
+		try {
+
+			const bool deleted =
+				repository_.deleteByBarcode(
+						barcode
+						);
+
+
+			if (!deleted) {
+
+				return grpc::Status{
+					grpc::StatusCode::NOT_FOUND,
+						"Producto no encontrado"
+				};
+			}
+
+
+			response->set_ok(true);
+
+			return grpc::Status::OK;
+
+		} catch (const std::exception& e) {
+
+			return grpc::Status{
+				grpc::StatusCode::INTERNAL,
+					e.what()
+			};
+		}
 	}
 
 	grpc::Status ProductServiceImpl::ListProducts(
