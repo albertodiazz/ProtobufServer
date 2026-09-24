@@ -11,6 +11,7 @@
 #include "core/image/ImageFormatDetector.h"
 #include "features/product/application/ProductValidator.h"
 #include "core/image/ThumbailGenerator.h"
+#include "features/product/domain/ProductSearchPageToken.h"
 
 #include <string>
 
@@ -604,5 +605,138 @@ namespace puntodeventa::v1 {
 			};
 		}
 	}
+
+	grpc::Status ProductServiceImpl::SearchProducts(
+			grpc::ServerContext* context,
+			const SearchProductsRequest* request,
+			SearchProductsResponse* response
+			) {
+
+		/*
+		 * 1. Cancelación.
+		 */
+		if (context->IsCancelled()) {
+			return grpc::Status{
+				grpc::StatusCode::CANCELLED,
+				"Peticion cancelada"
+			};
+		}
+
+
+		/*
+		 * 2. Validar query.
+		 */
+		if (request->query().empty()) {
+			return grpc::Status{
+				grpc::StatusCode::INVALID_ARGUMENT,
+				"query no puede estar vacio"
+			};
+		}
+
+
+		/*
+		 * 3. Validar page size.
+		 */
+		if (
+				request->page_size() < 1 ||
+				request->page_size() > 100
+			 ) {
+			return grpc::Status{
+				grpc::StatusCode::INVALID_ARGUMENT,
+					"page_size debe estar entre 1 y 100"
+			};
+		}
+
+
+		/*
+		 * 4. Decodificar cursor.
+		 */
+		std::optional<
+			puntodeventa::product::ProductSearchCursor
+			> cursor;
+
+
+		if (!request->page_token().empty()) {
+
+			cursor =
+				puntodeventa::product::
+				decodeSearchPageToken(
+						request->page_token()
+						);
+
+
+			if (!cursor) {
+				return grpc::Status{
+					grpc::StatusCode::INVALID_ARGUMENT,
+						"page_token invalido"
+				};
+			}
+		}
+
+
+		/*
+		 * 5. Buscar.
+		 */
+		const auto page =
+			repository_.searchProducts(
+					request->query(),
+					request->page_size(),
+					cursor
+					);
+
+
+		/*
+		 * 6. Construir productos.
+		 */
+		for (const auto& producto : page.productos) {
+
+			auto* protoProducto =
+				response->add_productos();
+
+			protoProducto->set_product_id(
+					producto.product_id
+					);
+
+			protoProducto->set_nombre(
+					producto.nombre
+					);
+
+			protoProducto->set_barcode(
+					producto.barcode
+					);
+
+			protoProducto->set_precio(
+					producto.precio
+					);
+
+			protoProducto->set_cantidad(
+					producto.cantidad
+					);
+
+			/*
+			 * Aquí todavía falta resolver thumbnail
+			 * de la misma manera que ya lo haces en
+			 * ListProducts.
+			 */
+		}
+
+
+		/*
+		 * 7. Crear token para la siguiente página.
+		 */
+		if (page.next_cursor) {
+
+			response->set_next_page_token(
+					puntodeventa::product::
+					encodeSearchPageToken(
+						*page.next_cursor
+						)
+					);
+		}
+
+
+		return grpc::Status::OK;
+	}
+
 }
 

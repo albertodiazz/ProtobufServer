@@ -27,6 +27,12 @@ namespace puntodeventa::product {
 					std::optional<std::int64_t> beforeId
 					) override;
 
+			SearchProductsPage searchProducts(
+					const std::string& query,
+					std::int32_t limit,
+					std::optional<ProductSearchCursor> cursor
+					) override;
+
 			std::optional<Producto>	 getByBarcode(
 					const std::string& barcode 
 					) override;

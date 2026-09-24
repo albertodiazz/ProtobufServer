@@ -64,6 +64,12 @@ namespace puntodeventa::v1{
 						) override;
 
 
+				grpc::Status SearchProducts(
+						grpc::ServerContext* context,
+						const SearchProductsRequest* request,
+						SearchProductsResponse* response
+						) override;
+
 			private:
 				puntodeventa::product::ProductRepository& repository_;
 				puntodeventa::storage::ObjectStorage& objectStorage_;

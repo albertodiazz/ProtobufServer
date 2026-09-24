@@ -2,6 +2,8 @@
 
 #include <string>
 #include <cstdint>
+#include <vector>
+#include <optional>
 
 
 namespace puntodeventa::product {
@@ -25,6 +27,17 @@ namespace puntodeventa::product {
 		int32_t precio = 0;
 		std::string thumbnail_key;
 		int32_t cantidad = 0;
+	};
+
+	struct ProductSearchCursor {
+		bool exact_match = false;
+		float rank = 0.0f;
+		std::int64_t product_id = 0;
+	};
+
+	struct SearchProductsPage {
+		std::vector<ProductoResumen> productos;
+		std::optional<ProductSearchCursor> next_cursor;
 	};
 
 

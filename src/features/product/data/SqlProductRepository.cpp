@@ -1,6 +1,7 @@
 #include "SqlProductRepository.h"
 #include <optional>
 #include <iostream>
+#include <algorithm>
 
 namespace puntodeventa::product {
 
@@ -260,6 +261,346 @@ namespace puntodeventa::product {
 		transaction.commit();
 		return productos;
 	}
+
+	SearchProductsPage
+		SqlProductRepository::searchProducts(
+				const std::string& query,
+				std::int32_t limit,
+				std::optional<ProductSearchCursor> cursor
+				) {
+
+			/*
+			 * Una búsqueda vacía no produce resultados.
+			 */
+			if (query.empty()) {
+				return {};
+			}
+
+			/*
+			 * limit representa la cantidad máxima de productos
+			 * que vamos a devolver al cliente.
+			 *
+			 * Internamente pediremos uno adicional para saber
+			 * si existe una siguiente página.
+			 */
+			if (limit < 1 || limit > 100) {
+				throw std::invalid_argument(
+						"limit debe estar entre 1 y 100"
+						);
+			}
+
+			/*
+			 * Validar cursor si existe.
+			 */
+			if (cursor) {
+
+				if (cursor->product_id <= 0) {
+					throw std::invalid_argument(
+							"cursor.product_id debe ser positivo"
+							);
+				}
+
+				if (cursor->rank < 0.0f) {
+					throw std::invalid_argument(
+							"cursor.rank no puede ser negativo"
+							);
+				}
+			}
+
+			/*
+			 * Ejemplo:
+			 *
+			 * limit = 20
+			 * fetchLimit = 21
+			 *
+			 * El elemento adicional solamente nos dice
+			 * si existe una página posterior.
+			 */
+			const std::int32_t fetchLimit =
+				limit + 1;
+
+
+			pqxx::read_transaction transaction{connection_};
+
+
+			const pqxx::result result = cursor
+
+				/*
+				 * =================================================
+				 * SIGUIENTE PÁGINA
+				 * =================================================
+				 */
+				? transaction.exec(
+						R"(
+                WITH search AS (
+                    SELECT
+                        $1::TEXT AS texto,
+
+                        plainto_tsquery(
+                            'spanish',
+                            $1
+                        ) AS query
+                ),
+
+                ranked_products AS (
+                    SELECT
+                        p.id,
+                        p.nombre,
+                        p.barcode,
+                        p.precio,
+
+                        COALESCE(
+                            p.thumbnail_key,
+                            ''
+                        ) AS thumbnail_key,
+
+                        p.cantidad,
+
+                        (
+                            lower(p.nombre) =
+                            lower(search.texto)
+                        ) AS exact_match,
+
+                        ts_rank(
+                            p.search_vector,
+                            search.query
+                        ) AS rank
+
+                    FROM products p
+
+                    CROSS JOIN search
+
+                    WHERE p.active = TRUE
+                      AND p.search_vector @@ search.query
+                )
+
+                SELECT
+                    id,
+                    nombre,
+                    barcode,
+                    precio,
+                    thumbnail_key,
+                    cantidad,
+                    exact_match,
+                    rank
+
+                FROM ranked_products
+
+                WHERE (
+                    exact_match,
+                    rank,
+                    id
+                ) < (
+                    $2::BOOLEAN,
+                    $3::REAL,
+                    $4::BIGINT
+                )
+
+                ORDER BY
+                    exact_match DESC,
+                    rank DESC,
+                    id DESC
+
+                LIMIT $5
+				)",
+
+				pqxx::params{
+					query,
+					cursor->exact_match,
+					cursor->rank,
+					cursor->product_id,
+					fetchLimit
+				}
+			)
+
+				/*
+				 * =================================================
+				 * PRIMERA PÁGINA
+				 * =================================================
+				 */
+				: transaction.exec(
+						R"(
+                WITH search AS (
+                    SELECT
+                        $1::TEXT AS texto,
+
+                        plainto_tsquery(
+                            'spanish',
+                            $1
+                        ) AS query
+                ),
+
+                ranked_products AS (
+                    SELECT
+                        p.id,
+                        p.nombre,
+                        p.barcode,
+                        p.precio,
+
+                        COALESCE(
+                            p.thumbnail_key,
+                            ''
+                        ) AS thumbnail_key,
+
+                        p.cantidad,
+
+                        (
+                            lower(p.nombre) =
+                            lower(search.texto)
+                        ) AS exact_match,
+
+                        ts_rank(
+                            p.search_vector,
+                            search.query
+                        ) AS rank
+
+                    FROM products p
+
+                    CROSS JOIN search
+
+                    WHERE p.active = TRUE
+                      AND p.search_vector @@ search.query
+                )
+
+                SELECT
+                    id,
+                    nombre,
+                    barcode,
+                    precio,
+                    thumbnail_key,
+                    cantidad,
+                    exact_match,
+                    rank
+
+                FROM ranked_products
+
+                ORDER BY
+                    exact_match DESC,
+                    rank DESC,
+                    id DESC
+
+                LIMIT $2
+            )",
+
+				pqxx::params{
+					query,
+						fetchLimit
+				}
+			);
+
+
+			SearchProductsPage page;
+
+
+			/*
+			 * Si pedimos 21 y recibimos 21:
+			 *
+			 * hay al menos otro elemento después de los
+			 * 20 que vamos a devolver.
+			 */
+
+			const std::size_t resultSize =
+				static_cast<std::size_t>(
+						result.size()
+						);
+
+			const bool hasMore =
+				resultSize >
+				static_cast<std::size_t>(limit);
+
+			/*
+			 * Nunca entregamos el elemento adicional.
+			 */
+			const std::size_t productosADevolver =
+				std::min(
+						resultSize,
+						static_cast<std::size_t>(limit)
+						);
+
+			page.productos.reserve(
+					productosADevolver
+					);
+
+
+			/*
+			 * Necesitamos recordar la metadata del último
+			 * producto REALMENTE devuelto.
+			 *
+			 * Ese será nuestro next_cursor.
+			 */
+			ProductSearchCursor lastCursor;
+			bool hasLastCursor = false;
+
+
+			for (
+					std::size_t i = 0;
+					i < productosADevolver;
+					++i
+					) {
+
+				const auto& row = result[i];
+
+
+				ProductoResumen producto{
+					.product_id =
+						row["id"].as<std::int64_t>(),
+
+						.nombre =
+							row["nombre"].as<std::string>(),
+
+						.barcode =
+							row["barcode"].as<std::string>(),
+
+						.precio =
+							row["precio"].as<std::int32_t>(),
+
+						.thumbnail_key =
+							row["thumbnail_key"].as<std::string>(),
+
+						.cantidad =
+							row["cantidad"].as<std::int32_t>()
+				};
+
+
+				page.productos.push_back(
+						std::move(producto)
+						);
+
+
+				/*
+				 * Guardamos el cursor correspondiente a este
+				 * producto.
+				 *
+				 * Después del loop contendrá los valores del
+				 * último producto retornado.
+				 */
+				lastCursor = ProductSearchCursor{
+					.exact_match =
+						row["exact_match"].as<bool>(),
+
+						.rank =
+							row["rank"].as<float>(),
+
+						.product_id =
+							row["id"].as<std::int64_t>()
+				};
+
+				hasLastCursor = true;
+			}
+
+
+			/*
+			 * Solamente existe next_cursor si sabemos que hay
+			 * otra página.
+			 */
+			if (hasMore && hasLastCursor) {
+				page.next_cursor =
+					lastCursor;
+			}
+
+
+			return page;
+		}
 
 	bool SqlProductRepository::deleteByBarcode(
 			const std::string& barcode
