@@ -12,6 +12,7 @@
 #include "features/product/application/ProductValidator.h"
 #include "core/image/ThumbailGenerator.h"
 #include "features/product/domain/ProductSearchPageToken.h"
+#include "features/product/application/IdempotentTools.h"
 
 #include <string>
 
@@ -41,105 +42,551 @@ namespace puntodeventa::v1 {
 	}
 
 
-
 	grpc::Status ProductServiceImpl::CreateProduct(
 			grpc::ServerContext* context,
 			const CreateProductRequest* request,
 			CreateProductResponse* response
 			) {
-		std::cout << "[1] Inicio CreateProduct\n";
 
-		std::string barcode =
-			puntodeventa::generadorBarcode();
+		std::cout
+			<< "[1] Inicio CreateProduct\n";
+
+
+		/*
+		 * =====================================================
+		 * 1. Validar UUID
+		 * =====================================================
+		 */
+
+		const std::string& uuid =
+			request->uuid();
+
+
+		if (!puntodeventa::product::isValidUuid(uuid)) {
+
+			return grpc::Status{
+				grpc::StatusCode::INVALID_ARGUMENT,
+					"UUID invalido"
+			};
+		}
+
+
+		/*
+		 * Cancelación antes de empezar cualquier
+		 * operación persistente.
+		 */
+		if (context->IsCancelled()) {
+
+			return grpc::Status{
+				grpc::StatusCode::CANCELLED,
+					"Peticion cancelada"
+			};
+		}
+
+
+		/*
+		 * =====================================================
+		 * 2. Validar datos del producto
+		 * =====================================================
+		 */
 
 		std::string extension;
 		std::string contentType;
 
+
 		const std::string& imageData =
 			request->imagen().data();
 
+
+		/*
+		 * Todavía no conocemos el barcode definitivo.
+		 *
+		 * Primero validamos los demás datos.
+		 */
+
 		puntodeventa::product::Producto producto{
-			.nombre = request->nombre(),
-				.barcode = barcode,
-				.descripcion = request->descripcion(),
-				.precio = request->precio(),
-				.costo = request->costo(),
-				.image_key = imageData,
-				.cantidad = request->cantidad()
+			.nombre =
+				request->nombre(),
+
+				.barcode =
+					"",
+
+				.descripcion =
+					request->descripcion(),
+
+				.precio =
+					request->precio(),
+
+				.costo =
+					request->costo(),
+
+				.image_key =
+					imageData,
+
+				.cantidad =
+					request->cantidad()
 		};
 
-		const auto validation = 
+
+		const auto validation =
 			ProductValidator::validate(
 					producto.nombre,
 					producto.descripcion,
 					producto.precio,
 					producto.costo,
 					producto.image_key,
-					puntodeventa::image::detectImageFormat(producto.image_key),
+
+					puntodeventa::image::detectImageFormat(
+						producto.image_key
+						),
+
 					extension,
 					contentType,
 					producto.cantidad
 					);
 
-		if(validation){
-			const std::string message = 
-				ProductValidator::validationErrorMessage(*validation);
-			std::cout << "Error: " << message << request->precio() << std::endl;
+
+		if (validation) {
+
+			const std::string message =
+				ProductValidator::
+				validationErrorMessage(
+						*validation
+						);
+
+
+			std::cout
+				<< "Error: "
+				<< message
+				<< '\n';
+
+
 			return grpc::Status{
 				grpc::StatusCode::INVALID_ARGUMENT,
 					message
 			};
 		}
 
-		std::string imageKey;
-		std::string imageKey_thumbnail;
 
-		std::cout << "[6] Antes de S3\n";
+		/*
+		 * =====================================================
+		 * 3. Hash de la petición
+		 * =====================================================
+		 */
+
+		std::string requestHash;
+
+		try {
+
+			requestHash =
+				puntodeventa::product::buildCreateProductRequestHash(
+						*request
+						);
+
+		}
+		catch (const std::exception& e) {
+
+			std::cerr
+				<< "[CreateProduct] Error hash: "
+				<< e.what()
+				<< '\n';
+
+
+			return grpc::Status{
+				grpc::StatusCode::INTERNAL,
+					"No fue posible procesar la peticion"
+			};
+		}
+
+
+		/*
+		 * =====================================================
+		 * 4. Generar barcode candidato
+		 * =====================================================
+		 *
+		 * Este solamente se utilizará si este UUID
+		 * nunca había sido registrado.
+		 */
+
+		const std::string proposedBarcode =
+			puntodeventa::generadorBarcode();
+
+
+		/*
+		 * =====================================================
+		 * 5. Reservar UUID
+		 * =====================================================
+		 */
+
+		puntodeventa::product::CreateProductReservation
+			reservation;
+
+
+		try {
+
+			reservation =
+				repository_
+				.reserveCreateProductRequest(
+						uuid,
+						requestHash,
+						proposedBarcode
+						);
+
+		}
+		catch (const std::exception& e) {
+
+			std::cerr
+				<< "[CreateProduct] Error reservando UUID: "
+				<< e.what()
+				<< '\n';
+
+
+			return grpc::Status{
+				grpc::StatusCode::INTERNAL,
+					"No fue posible reservar la operacion"
+			};
+		}
+
+
+		/*
+		 * =====================================================
+		 * 6. Mismo UUID pero petición diferente
+		 * =====================================================
+		 */
+
+		if (
+				reservation.state ==
+				puntodeventa::product::
+				CreateProductReservationState::Conflict
+			 ) {
+
+			std::cerr
+				<< "[CreateProduct] UUID reutilizado "
+				<< "con datos diferentes: "
+				<< uuid
+				<< '\n';
+
+
+			return grpc::Status{
+				grpc::StatusCode::FAILED_PRECONDITION,
+
+					"El UUID ya fue utilizado "
+						"para otra operacion"
+			};
+		}
+
+
+		/*
+		 * =====================================================
+		 * 7. Operación ya completada
+		 * =====================================================
+		 *
+		 * No generamos imagen.
+		 * No escribimos S3.
+		 * No hacemos INSERT.
+		 *
+		 * Simplemente devolvemos la respuesta anterior.
+		 */
+
+		if (
+				reservation.state ==
+				puntodeventa::product::
+				CreateProductReservationState::Completed
+			 ) {
+
+			if (!reservation.product_id) {
+
+				std::cerr
+					<< "[CreateProduct] COMPLETED "
+					<< "sin product_id\n";
+
+
+				return grpc::Status{
+					grpc::StatusCode::INTERNAL,
+						"Estado de idempotencia inconsistente"
+				};
+			}
+
+
+			std::cout
+				<< "[CreateProduct] Retry COMPLETED. UUID: "
+				<< uuid
+				<< '\n';
+
+
+			response->set_ok(
+					true
+					);
+
+			response->set_mensaje(
+					"El producto fue guardado correctamente"
+					);
+
+			response->set_product_id(
+					*reservation.product_id
+					);
+
+			response->set_internal_barcode(
+					reservation.barcode
+					);
+
+
+			return grpc::Status::OK;
+		}
+
+
+		/*
+		 * =====================================================
+		 * 8. ACQUIRED o PROCESSING
+		 * =====================================================
+		 *
+		 * En AMBOS casos utilizamos el barcode
+		 * almacenado en PostgreSQL.
+		 *
+		 * Nunca volvemos a usar proposedBarcode.
+		 */
+
+		producto.barcode =
+			reservation.barcode;
+
+
+		std::cout
+			<< "[CreateProduct] UUID: "
+			<< uuid
+			<< '\n';
+
+		std::cout
+			<< "[CreateProduct] Barcode reservado: "
+			<< producto.barcode
+			<< '\n';
+
+
+		if (
+				reservation.state ==
+				puntodeventa::product::
+				CreateProductReservationState::Processing
+			 ) {
+
+			std::cout
+				<< "[CreateProduct] "
+				<< "Reanudando operación PROCESSING\n";
+		}
+
+
+		/*
+		 * =====================================================
+		 * 9. Thumbnail
+		 * =====================================================
+		 */
 
 		ThumbnailGenerator thumbnailGenerator;
-		const Thumbnail thumbnail = thumbnailGenerator.generate(imageData);
 
-		imageKey = objectStorage_.putObject(
-				"products/" +
-				barcode +
-				"/main" +
-				extension,
-				imageData,
-				contentType
+
+		Thumbnail thumbnail;
+
+		try {
+
+			thumbnail =
+				thumbnailGenerator.generate(
+						imageData
+						);
+
+		}
+		catch (const std::exception& e) {
+
+			std::cerr
+				<< "[CreateProduct] Thumbnail error: "
+				<< e.what()
+				<< '\n';
+
+
+			return grpc::Status{
+				grpc::StatusCode::INTERNAL,
+					"No fue posible generar la miniatura"
+			};
+		}
+
+
+		/*
+		 * =====================================================
+		 * 10. S3
+		 * =====================================================
+		 *
+		 * Como usamos SIEMPRE el mismo barcode:
+		 *
+		 * products/<barcode>/main...
+		 * products/<barcode>/thumb...
+		 *
+		 * un retry vuelve a escribir las mismas keys.
+		 */
+
+		std::string imageKey;
+		std::string imageKeyThumbnail;
+
+
+		try {
+
+			std::cout
+				<< "[6] Antes de S3\n";
+
+
+			imageKey =
+				objectStorage_.putObject(
+						"products/" +
+						producto.barcode +
+						"/main" +
+						extension,
+
+						imageData,
+
+						contentType
+						);
+
+
+			imageKeyThumbnail =
+				objectStorage_.putObject(
+						"products/" +
+						producto.barcode +
+						"/thumb" +
+						thumbnail.extension,
+
+						thumbnail.data,
+
+						contentType
+						);
+
+
+			std::cout
+				<< "[7] S3 terminado. Key: "
+				<< imageKey
+				<< '\n';
+
+		}
+		catch (const std::exception& e) {
+
+			std::cerr
+				<< "[CreateProduct] Error S3: "
+				<< e.what()
+				<< '\n';
+
+
+			/*
+			 * Dejamos la operación PROCESSING.
+			 *
+			 * Un retry con el mismo UUID y mismo hash
+			 * obtendrá el mismo barcode y volverá
+			 * a intentar exactamente estas mismas keys.
+			 */
+			return grpc::Status{
+				grpc::StatusCode::INTERNAL,
+					"No fue posible almacenar la imagen"
+			};
+		}
+
+
+		/*
+		 * Las referencias que guardaremos en PostgreSQL.
+		 */
+		producto.image_key =
+			imageKey;
+
+		producto.thumbnail_key =
+			imageKeyThumbnail;
+
+
+		/*
+		 * =====================================================
+		 * 11. Crear producto + completar UUID
+		 * =====================================================
+		 *
+		 * createIdempotent():
+		 *
+		 * BEGIN
+		 *
+		 * SELECT request FOR UPDATE
+		 *
+		 * INSERT products
+		 *
+		 * UPDATE create_product_requests
+		 *      status = COMPLETED
+		 *      product_id = ...
+		 *
+		 * COMMIT
+		 */
+
+		std::int64_t productoId;
+
+
+		try {
+
+			productoId =
+				repository_.createIdempotent(
+						producto,
+						uuid
+						);
+
+		}
+		catch (const std::exception& e) {
+
+			std::cerr
+				<< "[CreateProduct] "
+				<< "Error createIdempotent: "
+				<< e.what()
+				<< '\n';
+
+
+			return grpc::Status{
+				grpc::StatusCode::INTERNAL,
+					"No fue posible guardar el producto"
+			};
+		}
+
+
+		std::cout
+			<< "[9] Producto guardado ID: "
+			<< productoId
+			<< '\n';
+
+
+		/*
+		 * =====================================================
+		 * 12. Respuesta
+		 * =====================================================
+		 *
+		 * A partir de aquí el COMMIT ya ocurrió.
+		 *
+		 * NO comprobamos context->IsCancelled().
+		 *
+		 * Aunque Android haya perdido conexión,
+		 * el producto YA existe.
+		 *
+		 * Android deberá reintentar usando
+		 * exactamente el mismo UUID.
+		 */
+
+		response->set_ok(
+				true
 				);
 
-		imageKey_thumbnail = objectStorage_.putObject(
-				"products/" +
-				barcode +
-				"/thumb" +
-				thumbnail.extension,
-				thumbnail.data,
-				contentType
-				);
-
-		std::cout << "[7] S3 terminado. Key: "
-			<< imageKey << '\n';
-		// Ahora guardamos la referencias de S3
-		producto.image_key = imageKey;
-		producto.thumbnail_key = imageKey_thumbnail;
-		const int64_t productoId =
-			repository_.create(producto);
-
-		std::cout << "[9] Producto guardado ID: "
-			<< productoId << '\n';
-
-		response->set_ok(true);
 		response->set_mensaje(
 				"El producto fue guardado correctamente"
 				);
-		response->set_product_id(productoId);
-		response->set_internal_barcode(barcode);
 
-		std::cout << "[10] RPC terminado\n";
+		response->set_product_id(
+				productoId
+				);
+
+		response->set_internal_barcode(
+				producto.barcode
+				);
+
+
+		std::cout
+			<< "[10] RPC terminado\n";
+
 
 		return grpc::Status::OK;
 	}
-
 
 	grpc::Status ProductServiceImpl::GetProductById(
 			grpc::ServerContext* context,
@@ -315,9 +762,9 @@ namespace puntodeventa::v1 {
 				);
 
 		std::cout
-    << "[UPDATE-1] imageKey: "
-    << imageKey
-    << '\n';
+			<< "[UPDATE-1] imageKey: "
+			<< imageKey
+			<< '\n';
 
 		/*
 		 * 6. Construir producto ya validado
@@ -452,152 +899,314 @@ namespace puntodeventa::v1 {
 			const ListProductsRequest* request,
 			ListProductsResponse* response
 			) {
+
+		/*
+		 * 1. Validar page_size.
+		 */
 		if (request->page_size() < 0) {
+
 			return grpc::Status{
 				grpc::StatusCode::INVALID_ARGUMENT,
 				"page_size no puede ser negativo"
 			};
 		}
 
-		const std::int32_t pageSize = request->page_size() == 0
+
+		/*
+		 * page_size = 0:
+		 * usar valor por defecto.
+		 *
+		 * Máximo permitido:
+		 * 100 productos.
+		 */
+		const std::int32_t pageSize =
+			request->page_size() == 0
 			? 20
-			: std::min<std::int32_t>(request->page_size(), 100);
-
-		// Primera página: sin cursor. Para continuar: último ID entregado.
-		// Android debe reenviar el token recibido, sin calcularlo.
-		std::optional<std::int64_t> beforeId;
-		const std::string& token = request->page_token();
-
-		if (!token.empty()) {
-			if (token.size() > 19) {
-				return grpc::Status{
-					grpc::StatusCode::INVALID_ARGUMENT,
-						"page_token inválido"
-				};
-			}
-
-			std::int64_t id = 0;
-			const auto parsed = std::from_chars(
-					token.data(), token.data() + token.size(), id
+			: std::min<std::int32_t>(
+					request->page_size(),
+					100
 					);
 
-			if (parsed.ec != std::errc{} ||
-					parsed.ptr != token.data() + token.size() || id <= 0) {
+
+		/*
+		 * 2. Decodificar cursor.
+		 *
+		 * Primera página:
+		 * page_token = ""
+		 *
+		 * Siguientes páginas:
+		 * page_token = último product_id entregado.
+		 */
+		std::optional<std::int64_t> beforeId;
+
+		const std::string& token =
+			request->page_token();
+
+
+		if (!token.empty()) {
+
+			/*
+			 * int64 positivo:
+			 * máximo práctico 19 dígitos.
+			 */
+			if (token.size() > 19) {
+
 				return grpc::Status{
 					grpc::StatusCode::INVALID_ARGUMENT,
 						"page_token inválido"
 				};
 			}
+
+
+			std::int64_t id = 0;
+
+			const auto parsed =
+				std::from_chars(
+						token.data(),
+						token.data() + token.size(),
+						id
+						);
+
+
+			if (
+					parsed.ec != std::errc{} ||
+					parsed.ptr != token.data() + token.size() ||
+					id <= 0
+				 ) {
+
+				return grpc::Status{
+					grpc::StatusCode::INVALID_ARGUMENT,
+						"page_token inválido"
+				};
+			}
+
 
 			beforeId = id;
 		}
 
+
+		/*
+		 * 3. Comprobar cancelación antes
+		 * de acceder a infraestructura.
+		 */
 		if (context->IsCancelled()) {
+
 			return grpc::Status{
 				grpc::StatusCode::CANCELLED,
 					"Petición cancelada"
 			};
 		}
 
+
 		try {
-			// Una fila adicional permite detectar la siguiente página.
-			const auto filas = repository_.listProducts(pageSize + 1, beforeId);
 
-			const std::size_t count = std::min(
-					filas.size(), static_cast<std::size_t>(pageSize)
-					);
+			/*
+			 * Pedimos una fila adicional para saber
+			 * si existe una siguiente página.
+			 *
+			 * pageSize = 20
+			 * repository = 21
+			 */
+			const auto filas =
+				repository_.listProducts(
+						pageSize + 1,
+						beforeId
+						);
 
-			bool hayMas = filas.size() > count;
+
+			/*
+			 * Nunca entregamos más de pageSize.
+			 */
+			const std::size_t count =
+				std::min(
+						filas.size(),
+						static_cast<std::size_t>(
+							pageSize
+							)
+						);
+
+
+			/*
+			 * Si repository devolvió una fila adicional,
+			 * sabemos que existen más productos.
+			 */
+			bool hayMas =
+				filas.size() > count;
+
+
 			std::int64_t ultimoIdEntregado = 0;
 
-			// Reserva 64 bytes para el token y su envoltura Protobuf.
-			// El mensaje completo queda por debajo de 3 MiB.
-			constexpr std::size_t maxResponseBytes = 3U * 1024U * 1024U;
-			constexpr std::size_t payloadBudget = maxResponseBytes - 64U;
+
+			/*
+			 * Dejamos margen para:
+			 *
+			 * - next_page_token
+			 * - metadata protobuf
+			 * - envoltura gRPC
+			 */
+			constexpr std::size_t maxResponseBytes =
+				3U * 1024U * 1024U;
+
+			constexpr std::size_t payloadBudget =
+				maxResponseBytes - 64U;
+
 
 			ListProductsResponse pagina;
 
-			for (std::size_t i = 0; i < count; ++i) {
+
+			/*
+			 * 4. Construir página.
+			 */
+			for (
+					std::size_t i = 0;
+					i < count;
+					++i
+					) {
+
 				if (context->IsCancelled()) {
+
 					return grpc::Status{
 						grpc::StatusCode::CANCELLED,
 							"Petición cancelada"
 					};
 				}
 
-				const auto& source = filas[i];
 
-				// Es el ProductoResumen de Protobuf, en namespace v1.
-				ProductoResumen item;
-				item.set_product_id(source.product_id);
-				item.set_nombre(source.nombre);
-				item.set_barcode(source.barcode);
-				item.set_precio(source.precio);
-				item.set_cantidad(source.cantidad);
+				const auto& source =
+					filas[i];
 
-				if (!source.thumbnail_key.empty()) {
-					try {
-						const std::string bytes =
-							objectStorage_.getObject(source.thumbnail_key);
 
-						if (!bytes.empty() && bytes.size() <= payloadBudget) {
-							item.mutable_miniatura()->set_data(bytes);
-						} else {
-							std::cerr
-								<< "[ListProducts] Miniatura vacía o demasiado "
-								<< "grande. Producto: " << source.product_id << '\n';
-						}
-					} catch (const std::exception& error) {
-						// Una miniatura no disponible conserva la tarjeta.
-						item.clear_miniatura();
-						std::cerr
-							<< "[ListProducts] Miniatura no disponible. Producto: "
-							<< source.product_id << ": " << error.what() << '\n';
-					}
-				}
+				/*
+				 * Agregamos directamente el elemento
+				 * protobuf a la página.
+				 */
+				auto* agregado =
+					pagina.add_productos();
 
-				auto* agregado = pagina.add_productos();
-				agregado->Swap(&item);
 
-				if (pagina.ByteSizeLong() > payloadBudget) {
-					if (pagina.productos_size() == 1) {
-						// Un único producto debe poder avanzar el cursor.
+				/*
+				 * Llenado común:
+				 *
+				 * id
+				 * nombre
+				 * barcode
+				 * precio
+				 * cantidad
+				 * miniatura
+				 */
+				fillProductoResumen(
+						source,
+						agregado
+						);
+
+
+				/*
+				 * 5. Verificar tamaño acumulado.
+				 */
+				if (
+						pagina.ByteSizeLong() >
+						payloadBudget
+					 ) {
+
+					/*
+					 * Si es el único producto de la página,
+					 * intentamos conservarlo quitando
+					 * únicamente la miniatura.
+					 */
+					if (
+							pagina.productos_size() == 1
+						 ) {
+
 						agregado->clear_miniatura();
 
-						if (pagina.ByteSizeLong() > payloadBudget) {
+
+						if (
+								pagina.ByteSizeLong() >
+								payloadBudget
+							 ) {
+
 							return grpc::Status{
 								grpc::StatusCode::RESOURCE_EXHAUSTED,
 									"Los datos de un producto exceden el límite"
 							};
 						}
+
 					} else {
-						// No se entregó este producto: se recuperará al continuar
-						// desde el último ID que sí quedó en la respuesta.
-						pagina.mutable_productos()->RemoveLast();
+
+						/*
+						 * Este producto todavía NO fue
+						 * entregado.
+						 *
+						 * Lo eliminamos y será recuperado
+						 * en la siguiente página utilizando
+						 * ultimoIdEntregado.
+						 */
+						pagina
+							.mutable_productos()
+							->RemoveLast();
+
+
 						hayMas = true;
+
 						break;
 					}
 				}
 
-				ultimoIdEntregado = source.product_id;
+
+				/*
+				 * Solo actualizamos el cursor después
+				 * de confirmar que el producto quedó
+				 * realmente dentro de la respuesta.
+				 */
+				ultimoIdEntregado =
+					source.product_id;
 			}
 
-			if (hayMas && pagina.productos_size() > 0) {
-				pagina.set_next_page_token(std::to_string(ultimoIdEntregado));
+
+			/*
+			 * 6. Construir cursor siguiente.
+			 */
+			if (
+					hayMas &&
+					pagina.productos_size() > 0
+				 ) {
+
+				pagina.set_next_page_token(
+						std::to_string(
+							ultimoIdEntregado
+							)
+						);
 			}
 
+
+			/*
+			 * 7. Última oportunidad de abortar antes
+			 * de entregar la respuesta.
+			 */
 			if (context->IsCancelled()) {
+
 				return grpc::Status{
 					grpc::StatusCode::CANCELLED,
 						"Petición cancelada"
 				};
 			}
 
-			response->Swap(&pagina);
+
+			response->Swap(
+					&pagina
+					);
+
+
 			return grpc::Status::OK;
 
+
 		} catch (const std::exception& error) {
-			std::cerr << "[ListProducts] Error: " << error.what() << '\n';
+
+			std::cerr
+				<< "[ListProducts] Error: "
+				<< error.what()
+				<< '\n';
+
 
 			return grpc::Status{
 				grpc::StatusCode::INTERNAL,
@@ -693,24 +1302,9 @@ namespace puntodeventa::v1 {
 			auto* protoProducto =
 				response->add_productos();
 
-			protoProducto->set_product_id(
-					producto.product_id
-					);
-
-			protoProducto->set_nombre(
-					producto.nombre
-					);
-
-			protoProducto->set_barcode(
-					producto.barcode
-					);
-
-			protoProducto->set_precio(
-					producto.precio
-					);
-
-			protoProducto->set_cantidad(
-					producto.cantidad
+			fillProductoResumen(
+					producto,
+					protoProducto
 					);
 
 			/*
@@ -737,6 +1331,83 @@ namespace puntodeventa::v1 {
 
 		return grpc::Status::OK;
 	}
+
+	void ProductServiceImpl::fillProductoResumen(
+			const puntodeventa::product::ProductoResumen& producto,
+			::puntodeventa::v1::ProductoResumen* protoProducto
+			) {
+
+		protoProducto->set_product_id(
+				producto.product_id
+				);
+
+		protoProducto->set_nombre(
+				producto.nombre
+				);
+
+		protoProducto->set_barcode(
+				producto.barcode
+				);
+
+		protoProducto->set_precio(
+				producto.precio
+				);
+
+		protoProducto->set_cantidad(
+				producto.cantidad
+				);
+
+
+		/*
+		 * Si no existe thumbnail, simplemente
+		 * dejamos miniatura vacía.
+		 */
+		if (producto.thumbnail_key.empty()) {
+			return;
+		}
+
+
+		try {
+
+			/*
+			 * getObject devuelve los bytes crudos
+			 * almacenados en RustFS / S3.
+			 */
+			const std::string thumbnail =
+				objectStorage_.getObject(
+						producto.thumbnail_key
+						);
+
+
+			if (thumbnail.empty()) {
+				return;
+			}
+
+
+			auto* miniatura =
+				protoProducto->mutable_miniatura();
+
+			miniatura->set_data(
+					thumbnail
+					);
+
+		} catch (const std::exception& e) {
+
+			/*
+			 * Fallar al descargar una miniatura
+			 * no debería impedir devolver el producto.
+			 */
+			std::cerr
+				<< "[THUMBNAIL-ERROR] product_id="
+				<< producto.product_id
+				<< " key="
+				<< producto.thumbnail_key
+				<< " error="
+				<< e.what()
+				<< '\n';
+		}
+	}
+
 
 }
 

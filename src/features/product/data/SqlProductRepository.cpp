@@ -53,6 +53,436 @@ namespace puntodeventa::product {
 		return productId;
 	}
 
+	CreateProductReservation
+		SqlProductRepository::reserveCreateProductRequest(
+				const std::string& uuid,
+				const std::string& requestHash,
+				const std::string& proposedBarcode
+				) {
+
+			pqxx::work transaction{connection_};
+
+
+			/*
+			 * Intentamos registrar por primera vez
+			 * esta operación CreateProduct.
+			 *
+			 * Si el UUID ya existe:
+			 * ON CONFLICT no hace nada.
+			 */
+			const pqxx::result inserted =
+				transaction.exec(
+						R"(
+                INSERT INTO create_product_requests (
+                    uuid,
+                    barcode,
+                    request_hash,
+                    status
+                )
+                VALUES (
+                    $1::UUID,
+                    $2,
+                    $3,
+                    'PROCESSING'
+                )
+
+                ON CONFLICT (uuid)
+                DO NOTHING
+
+                RETURNING
+                    barcode
+            )",
+				pqxx::params{
+					uuid,
+						proposedBarcode,
+						requestHash
+				}
+			);
+
+
+			/*
+			 * Si se insertó correctamente:
+			 *
+			 * somos la primera petición que utiliza
+			 * este UUID.
+			 */
+			if (!inserted.empty()) {
+
+				CreateProductReservation reservation;
+
+				reservation.state =
+					CreateProductReservationState::Acquired;
+
+				reservation.barcode =
+					inserted[0]["barcode"]
+					.as<std::string>();
+
+				reservation.product_id =
+					std::nullopt;
+
+
+				transaction.commit();
+
+				return reservation;
+			}
+
+
+			/*
+			 * Si llegamos aquí:
+			 *
+			 * el UUID ya existía.
+			 *
+			 * Recuperamos la operación anterior.
+			 */
+			const pqxx::result existing =
+				transaction.exec(
+						R"(
+                SELECT
+                    barcode,
+                    request_hash,
+                    status,
+                    product_id
+
+                FROM create_product_requests
+
+                WHERE uuid = $1::UUID
+            )",
+						pqxx::params{
+						uuid
+						}
+						);
+
+
+			/*
+			 * Teóricamente esto no debería ocurrir:
+			 *
+			 * ON CONFLICT nos dijo que el UUID existía,
+			 * pero ahora no podemos encontrarlo.
+			 */
+			if (existing.empty()) {
+
+				throw std::runtime_error(
+						"No se pudo recuperar "
+						"create_product_requests"
+						);
+			}
+
+
+			const auto& row =
+				existing[0];
+
+
+			const std::string existingBarcode =
+				row["barcode"]
+				.as<std::string>();
+
+
+			const std::string existingHash =
+				row["request_hash"]
+				.as<std::string>();
+
+
+			/*
+			 * Mismo UUID pero contenido diferente.
+			 *
+			 * Esto significa que alguien reutilizó
+			 * una idempotency key para otra petición.
+			 */
+			if (existingHash != requestHash) {
+
+				CreateProductReservation reservation;
+
+				reservation.state =
+					CreateProductReservationState::Conflict;
+
+				reservation.barcode =
+					existingBarcode;
+
+				reservation.product_id =
+					std::nullopt;
+
+
+				transaction.commit();
+
+				return reservation;
+			}
+
+
+			const std::string status =
+				row["status"]
+				.as<std::string>();
+
+
+
+			/*
+			 * La operación ya terminó anteriormente.
+			 */
+			if (status == "COMPLETED") {
+
+				if (row["product_id"].is_null()) {
+
+					throw std::runtime_error(
+							"CreateProduct COMPLETED "
+							"sin product_id"
+							);
+				}
+
+
+				const std::int64_t productId =
+					row["product_id"]
+					.as<std::int64_t>();
+
+
+				CreateProductReservation reservation;
+
+				reservation.state =
+					CreateProductReservationState::Completed;
+
+				reservation.barcode =
+					existingBarcode;
+
+				reservation.product_id =
+					productId;
+
+
+				transaction.commit();
+
+				return reservation;
+			}
+
+
+			/*
+			 * El UUID existe,
+			 * el hash coincide,
+			 * pero todavía está PROCESSING.
+			 *
+			 * El caller podrá continuar/reintentar
+			 * utilizando exactamente el barcode
+			 * reservado anteriormente.
+			 */
+			CreateProductReservation reservation;
+
+			reservation.state =
+				CreateProductReservationState::Processing;
+
+			reservation.barcode =
+				existingBarcode;
+
+			reservation.product_id =
+				std::nullopt;
+
+
+			transaction.commit();
+
+			return reservation;
+		}
+
+	std::int64_t
+		SqlProductRepository::createIdempotent(
+				const Producto& producto,
+				const std::string& uuid
+				) {
+
+			pqxx::work transaction{connection_};
+
+
+			/*
+			 * 1. Bloquear nuestra reserva.
+			 *
+			 * Así nadie puede modificar el estado
+			 * mientras terminamos CreateProduct.
+			 */
+			const pqxx::result requestResult =
+				transaction.exec(
+						R"(
+                SELECT
+                    barcode,
+                    status,
+                    product_id
+
+                FROM create_product_requests
+
+                WHERE uuid = $1::UUID
+
+                FOR UPDATE
+            )",
+						pqxx::params{
+						uuid
+						}
+						);
+
+
+			if (requestResult.empty()) {
+
+				throw std::runtime_error(
+						"No existe reserva para CreateProduct"
+						);
+			}
+
+
+			const auto& requestRow =
+				requestResult[0];
+
+
+			const std::string reservedBarcode =
+				requestRow["barcode"]
+				.as<std::string>();
+
+
+			/*
+			 * El producto que vamos a insertar debe usar
+			 * exactamente el barcode reservado.
+			 */
+			if (reservedBarcode != producto.barcode) {
+
+				throw std::runtime_error(
+						"El barcode del producto no coincide "
+						"con el barcode reservado"
+						);
+			}
+
+
+			const std::string status =
+				requestRow["status"]
+				.as<std::string>();
+
+
+			/*
+			 * Protección adicional.
+			 *
+			 * Si por alguna razón esta función vuelve
+			 * a ejecutarse para una operación completada,
+			 * no insertamos otro producto.
+			 */
+			if (status == "COMPLETED") {
+
+				if (requestRow["product_id"].is_null()) {
+
+					throw std::runtime_error(
+							"CreateProduct COMPLETED "
+							"sin product_id"
+							);
+				}
+
+
+				const std::int64_t existingProductId =
+					requestRow["product_id"]
+					.as<std::int64_t>();
+
+
+				transaction.commit();
+
+				return existingProductId;
+			}
+
+
+			/*
+			 * 2. Crear producto.
+			 */
+			pqxx::row productRow =
+				transaction.exec(
+						R"(
+                INSERT INTO products (
+                    nombre,
+                    descripcion,
+                    precio,
+                    costo,
+                    barcode,
+                    image_key,
+                    thumbnail_key,
+                    cantidad
+                )
+
+                VALUES (
+                    $1,
+                    $2,
+                    $3,
+                    $4,
+                    $5,
+                    $6,
+                    $7,
+                    $8
+                )
+
+                RETURNING id
+            )",
+				pqxx::params{
+					producto.nombre,
+						producto.descripcion,
+						producto.precio,
+						producto.costo,
+						producto.barcode,
+						producto.image_key,
+						producto.thumbnail_key,
+						producto.cantidad
+				}
+			).one_row();
+
+
+			const std::int64_t productId =
+				productRow["id"]
+				.as<std::int64_t>();
+
+
+			/*
+			 * 3. Marcar la operación como terminada.
+			 *
+			 * IMPORTANTE:
+			 * seguimos dentro de LA MISMA transacción.
+			 */
+			const pqxx::result completed =
+				transaction.exec(
+						R"(
+                UPDATE create_product_requests
+
+                SET
+                    status = 'COMPLETED',
+                    product_id = $1,
+                    completed_at = NOW()
+
+                WHERE uuid = $2::UUID
+                  AND status = 'PROCESSING'
+                  AND barcode = $3
+
+                RETURNING uuid
+            )",
+						pqxx::params{
+						productId,
+						uuid,
+						producto.barcode
+						}
+						);
+
+
+			/*
+			 * Esto tampoco debería ocurrir.
+			 *
+			 * Si ocurre, lanzamos antes del commit,
+			 * por lo que también se revierte el INSERT
+			 * del producto.
+			 */
+			if (completed.empty()) {
+
+				throw std::runtime_error(
+						"No se pudo completar "
+						"la operación idempotente"
+						);
+			}
+
+
+			/*
+			 * Los dos cambios se hacen visibles juntos:
+			 *
+			 * products INSERT
+			 * +
+			 * request COMPLETED
+			 */
+			transaction.commit();
+
+
+			return productId;
+		}
+
 	std::optional<Producto>
 		SqlProductRepository::update(
 				const Producto& producto
@@ -89,16 +519,16 @@ namespace puntodeventa::product {
 												thumbnail_key,
 												cantidad
                 )",
-							pqxx::params{
-								producto.nombre,
-									producto.descripcion,
-									producto.precio,
-									producto.costo,
-									producto.image_key,
-									producto.thumbnail_key,
-									producto.cantidad,
-									producto.barcode
-							}
+					pqxx::params{
+						producto.nombre,
+							producto.descripcion,
+							producto.precio,
+							producto.costo,
+							producto.image_key,
+							producto.thumbnail_key,
+							producto.cantidad,
+							producto.barcode
+					}
 				);
 
 				std::cout

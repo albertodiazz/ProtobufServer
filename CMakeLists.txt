@@ -18,6 +18,7 @@ find_package(libpqxx REQUIRED)
 find_package(protobuf CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
 find_package(PkgConfig REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 pkg_check_modules(
     VIPS
@@ -194,6 +195,7 @@ target_link_libraries(${PROJECT_NAME}
 	libpqxx::pqxx
 	${AWSSDK_LINK_LIBRARIES}
   PkgConfig::VIPS
+	OpenSSL::Crypto
 )
 
 # ---------------------------------------------------------------------------

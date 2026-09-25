@@ -74,5 +74,10 @@ namespace puntodeventa::v1{
 				puntodeventa::product::ProductRepository& repository_;
 				puntodeventa::storage::ObjectStorage& objectStorage_;
 
+				void fillProductoResumen(
+						const puntodeventa::product::ProductoResumen& producto,
+						::puntodeventa::v1::ProductoResumen* protoProducto
+						);
+
 		};
 }

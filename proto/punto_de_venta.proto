@@ -186,6 +186,8 @@ message CreateProductRequest {
   string descripcion = 4;
   ProductImage imagen = 5;
   int32 cantidad = 6;
+  // UUID generado por el cliente por operacion
+  string uuid = 7;
 }
 
 message UpdateProductRequest {

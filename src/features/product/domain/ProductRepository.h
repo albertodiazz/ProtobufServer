@@ -9,13 +9,47 @@
 namespace puntodeventa::product {
 
 
+	enum class CreateProductReservationState {
+		Acquired,
+		Processing,
+		Completed,
+		Conflict
+	};
+
+
+	struct CreateProductReservation {
+		CreateProductReservationState state;
+		std::string barcode;
+		std::optional<std::int64_t> product_id;
+	};
+
 	class ProductRepository {
 		public:
 			virtual ~ProductRepository() = default;
 
-			virtual int64_t create(const Producto& producto) = 0;
+			virtual int64_t create(
+					const Producto& producto
+					) = 0;
 
-			virtual std::optional<Producto> update(const Producto& producto) = 0;
+			////////////////////////////////////////////
+			/// Idempotencia en funcion create
+			///////////////////////////////////////////
+			virtual CreateProductReservation
+				reserveCreateProductRequest(
+						const std::string& uuid,
+						const std::string& requestHash,
+						const std::string& proposedBarcode
+						) = 0;
+
+			virtual std::int64_t createIdempotent(
+					const Producto& producto,
+					const std::string& uuid
+					) = 0;
+			///////////////////////////////////////////
+
+			virtual std::optional<Producto> update(
+					const Producto& producto
+					) = 0;
 
 			virtual std::vector<ProductoResumen> listProducts(
 					std::int32_t limit,

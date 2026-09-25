@@ -18,6 +18,20 @@ namespace puntodeventa::product {
 					const Producto& producto
 					) override;
 
+
+			CreateProductReservation
+				reserveCreateProductRequest(
+						const std::string& uuid,
+						const std::string& requestHash,
+						const std::string& proposedBarcode
+						) override;
+
+
+			std::int64_t createIdempotent(
+					const Producto& producto,
+					const std::string& uuid
+					) override;
+
 			std::optional<Producto> update(
 					const Producto& producto 
 					) override;
