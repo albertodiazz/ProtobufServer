@@ -14,11 +14,26 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(libpqxx REQUIRED)
 
-# Conan genera protobuf-config.cmake y gRPCConfig.cmake.
+# Dependencias generadas/resueltas por Conan.
 find_package(protobuf CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
+
 find_package(PkgConfig REQUIRED)
 find_package(OpenSSL REQUIRED)
+
+if(NOT TARGET protobuf::protoc)
+    message(
+        FATAL_ERROR
+        "Conan no proporcionó el target protobuf::protoc"
+    )
+endif()
+
+if(NOT TARGET gRPC::grpc_cpp_plugin)
+    message(
+        FATAL_ERROR
+        "Conan no proporcionó el target gRPC::grpc_cpp_plugin"
+    )
+endif()
 
 pkg_check_modules(
     VIPS
@@ -32,7 +47,8 @@ pkg_check_modules(
 # ---------------------------------------------------------------------------
 
 if(DEFINED ENV{AWS_SDK_ROOT})
-    list(PREPEND
+    list(
+        PREPEND
         CMAKE_PREFIX_PATH
         "$ENV{AWS_SDK_ROOT}"
     )
@@ -50,113 +66,45 @@ find_package(
 )
 
 # ---------------------------------------------------------------------------
-# Forzar las herramientas contenidas en los paquetes de Conan.
-#
-# Evita que los helpers de ConanCenter seleccionen:
-#   /usr/bin/protoc
-#   /usr/bin/grpc_cpp_plugin
-# ---------------------------------------------------------------------------
-
-set(CONAN_PROTOC
-    "${protobuf_PACKAGE_FOLDER_RELEASE}/bin/protoc"
-)
-
-set(CONAN_GRPC_CPP_PLUGIN
-    "${gRPC_PACKAGE_FOLDER_RELEASE}/bin/grpc_cpp_plugin"
-)
-
-if(NOT EXISTS "${CONAN_PROTOC}")
-    message(FATAL_ERROR
-        "No se encontró protoc de Conan en: ${CONAN_PROTOC}"
-    )
-endif()
-
-if(NOT EXISTS "${CONAN_GRPC_CPP_PLUGIN}")
-    message(FATAL_ERROR
-        "No se encontró grpc_cpp_plugin de Conan en: "
-        "${CONAN_GRPC_CPP_PLUGIN}"
-    )
-endif()
-
-# Corrige las variables usadas por los módulos de Protobuf.
-set(
-    Protobuf_PROTOC_EXECUTABLE
-    "${CONAN_PROTOC}"
-    CACHE FILEPATH
-    "protoc proporcionado por Conan"
-    FORCE
-)
-
-set(
-    PROTOC_PROGRAM
-    "${CONAN_PROTOC}"
-    CACHE FILEPATH
-    "protoc proporcionado por Conan"
-    FORCE
-)
-
-set(
-    GRPC_CPP_PLUGIN_PROGRAM
-    "${CONAN_GRPC_CPP_PLUGIN}"
-    CACHE FILEPATH
-    "grpc_cpp_plugin proporcionado por Conan"
-    FORCE
-)
-
-# Corrige también los targets importados.
-set_target_properties(
-    protobuf::protoc
-    PROPERTIES
-        IMPORTED_LOCATION "${CONAN_PROTOC}"
-        IMPORTED_LOCATION_RELEASE "${CONAN_PROTOC}"
-)
-
-set_target_properties(
-    gRPC::grpc_cpp_plugin
-    PROPERTIES
-        IMPORTED_LOCATION "${CONAN_GRPC_CPP_PLUGIN}"
-        IMPORTED_LOCATION_RELEASE "${CONAN_GRPC_CPP_PLUGIN}"
-)
-
-message(STATUS "protoc seleccionado: ${CONAN_PROTOC}")
-message(
-    STATUS
-    "grpc_cpp_plugin seleccionado: ${CONAN_GRPC_CPP_PLUGIN}"
-)
-
-# ---------------------------------------------------------------------------
 # Archivos Protocol Buffers
 # ---------------------------------------------------------------------------
 
-set(PROTO_ROOT
+set(
+    PROTO_ROOT
     "${CMAKE_CURRENT_SOURCE_DIR}/proto"
 )
 
-set(PROTO_GENERATED_DIR
+set(
+    PROTO_GENERATED_DIR
     "${CMAKE_CURRENT_BINARY_DIR}/generated"
 )
 
-set(PROTO_FILES
+set(
+    PROTO_FILES
     "${PROTO_ROOT}/punto_de_venta.proto"
 )
 
-file(MAKE_DIRECTORY
+file(
+    MAKE_DIRECTORY
     "${PROTO_GENERATED_DIR}"
 )
 
-# Biblioteca interna que contendrá todo el código generado.
-add_library(pos_proto STATIC
+add_library(
+    pos_proto
+    STATIC
     ${PROTO_FILES}
 )
 
-target_link_libraries(pos_proto
+target_link_libraries(
+    pos_proto
     PUBLIC
         protobuf::libprotobuf
         gRPC::grpc++
         gRPC::grpc++_reflection
 )
 
-target_include_directories(pos_proto
+target_include_directories(
+    pos_proto
     PUBLIC
         "${PROTO_GENERATED_DIR}"
 )
@@ -191,28 +139,33 @@ protobuf_generate(
 # ---------------------------------------------------------------------------
 # Servidor
 # ---------------------------------------------------------------------------
-file(GLOB_RECURSE PROJECT_SOURCES
+
+file(
+    GLOB_RECURSE PROJECT_SOURCES
     CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
 )
 
-add_executable(${PROJECT_NAME}
-	${PROJECT_SOURCES}
-	src/servidor_protobuf_grpc.h
+add_executable(
+    ${PROJECT_NAME}
+    ${PROJECT_SOURCES}
+    src/servidor_protobuf_grpc.h
 )
 
-target_include_directories(${PROJECT_NAME}
-	PRIVATE
-	"${CMAKE_CURRENT_SOURCE_DIR}/src"
+target_include_directories(
+    ${PROJECT_NAME}
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src"
 )
 
-target_link_libraries(${PROJECT_NAME}
-	PRIVATE
-	pos_proto
-	libpqxx::pqxx
-	${AWSSDK_LINK_LIBRARIES}
-  PkgConfig::VIPS
-	OpenSSL::Crypto
+target_link_libraries(
+    ${PROJECT_NAME}
+    PRIVATE
+        pos_proto
+        libpqxx::pqxx
+        ${AWSSDK_LINK_LIBRARIES}
+        PkgConfig::VIPS
+        OpenSSL::Crypto
 )
 
 # ---------------------------------------------------------------------------
@@ -222,8 +175,6 @@ target_link_libraries(${PROJECT_NAME}
 include(GNUInstallDirs)
 
 install(
-	TARGETS ${PROJECT_NAME}
-	RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    TARGETS ${PROJECT_NAME}
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
 )
-
-
