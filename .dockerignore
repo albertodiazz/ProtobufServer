@@ -1,0 +1,13 @@
+.git
+.gitignore
+
+build
+cmake-build-*
+
+.env
+.envrc
+
+.idea
+.vscode
+
+*.log

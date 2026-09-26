@@ -27,10 +27,27 @@ pkg_check_modules(
     "vips-cpp>=8.16"
 )
 
-list(APPEND CMAKE_PREFIX_PATH
-    "$ENV{HOME}/.local/opt/aws-sdk-cpp"
+# ---------------------------------------------------------------------------
+# AWS SDK
+# ---------------------------------------------------------------------------
+
+if(DEFINED ENV{AWS_SDK_ROOT})
+    list(PREPEND
+        CMAKE_PREFIX_PATH
+        "$ENV{AWS_SDK_ROOT}"
+    )
+
+    message(
+        STATUS
+        "AWS SDK root: $ENV{AWS_SDK_ROOT}"
+    )
+endif()
+
+find_package(
+    AWSSDK
+    REQUIRED
+    COMPONENTS s3
 )
-find_package(AWSSDK REQUIRED COMPONENTS s3)
 
 # ---------------------------------------------------------------------------
 # Forzar las herramientas contenidas en los paquetes de Conan.

@@ -1,4 +1,4 @@
-name: Homelab Test
+name: Build Backend Test
 
 on:
   push:
@@ -6,14 +6,24 @@ on:
       - test
 
 jobs:
-  runner-test:
+  docker-build:
     runs-on: homelab
 
     steps:
-      - name: Comprobar runner
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Mostrar commit
         run: |
-          echo "Forgejo Runner funcionando"
           echo "Commit: $FORGEJO_SHA"
-          uname -a
-          id
-          pwd
+          git rev-parse --short HEAD
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t puntodeventa-backend:test \
+            .
+
+      - name: Verificar imagen
+        run: |
+          docker image inspect puntodeventa-backend:test

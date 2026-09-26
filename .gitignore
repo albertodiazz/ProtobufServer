@@ -10,6 +10,7 @@ compile_commands.json
 
 .nvim.lua
 .env
+.envrc
 
 postgres-language-server.jsonc
 *.sql
