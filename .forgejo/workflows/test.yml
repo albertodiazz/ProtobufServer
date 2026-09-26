@@ -1,0 +1,19 @@
+name: Homelab Test
+
+on:
+  push:
+    branches:
+      - test
+
+jobs:
+  runner-test:
+    runs-on: homelab
+
+    steps:
+      - name: Comprobar runner
+        run: |
+          echo "Forgejo Runner funcionando"
+          echo "Commit: $FORGEJO_SHA"
+          uname -a
+          id
+          pwd
