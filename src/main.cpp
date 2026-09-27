@@ -79,7 +79,7 @@ int main(int argc, char* argv[]) {
 	builder.RegisterService(&servicioSale);
 
 	std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
-	std::cout << "Server listening on: " << server_addres << std::endl;
+	std::cout << "Docker test server listening on: " << server_addres << std::endl;
 	server->Wait();
 
 	Aws::ShutdownAPI(options);
