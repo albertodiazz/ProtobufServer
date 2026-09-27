@@ -21,9 +21,61 @@ jobs:
       - name: Build Docker image
         run: |
           docker build \
-            -t puntodeventa-backend:test \
-            .
+          -t puntodeventa-backend:test \
+          .
 
       - name: Verificar imagen
         run: |
           docker image inspect puntodeventa-backend:test
+
+      - name: Crear configuración de test
+        env:
+          DB_HOST: ${{ vars.TEST_DB_HOST }}
+          DB_PORT: ${{ vars.TEST_DB_PORT }}
+          DB_NAME: ${{ vars.TEST_DB_NAME }}
+          DB_USER: ${{ secrets.TEST_DB_USER }}
+          DB_PASSWORD: ${{ secrets.TEST_DB_PASSWORD }}
+
+          S3_ENDPOINT: ${{ vars.TEST_S3_ENDPOINT }}
+          S3_BUCKET: ${{ vars.TEST_S3_BUCKET }}
+          S3_ACCESS_KEY: ${{ secrets.TEST_S3_ACCESS_KEY }}
+          S3_SECRET_KEY: ${{ secrets.TEST_S3_SECRET_KEY }}
+        run: |
+          printf '%s\n' \
+            "DB_HOST=$DB_HOST" \
+            "DB_PORT=$DB_PORT" \
+            "DB_NAME=$DB_NAME" \
+            "DB_USER=$DB_USER" \
+            "DB_PASSWORD=$DB_PASSWORD" \
+            "S3_ENDPOINT=$S3_ENDPOINT" \
+            "S3_BUCKET=$S3_BUCKET" \
+            "S3_ACCESS_KEY=$S3_ACCESS_KEY" \
+            "S3_SECRET_KEY=$S3_SECRET_KEY" \
+            > /tmp/puntodeventa-test.env
+
+            chmod 600 /tmp/puntodeventa-test.env
+
+      - name: Deploy backend test
+        run: |
+          docker rm -f puntodeventa-test 2>/dev/null || true
+
+          docker run -d \
+          --name puntodeventa-test \
+          --restart unless-stopped \
+          --env-file /tmp/puntodeventa-test.env \
+          -p 50051:50051 \
+          puntodeventa-backend:test
+
+      - name: Verificar contenedor
+        run: |
+          docker ps \
+          --filter name=puntodeventa-test
+
+          docker logs \
+          --tail 50 \
+          puntodeventa-test
+
+      - name: Eliminar archivo temporal
+        if: always()
+        run: |
+          rm -f /tmp/puntodeventa-test.env
