@@ -1,0 +1,92 @@
+## TODO: Pendientes
+# [ ] Implementación de health check de DB y S3 desde backend
+
+name: Deploy Backend Cliente Zoe
+
+on:
+  push:
+    branches:
+      - cliente/cliente-zoe
+
+jobs:
+  docker-deploy:
+    runs-on: homelab
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Mostrar commit
+        run: |
+          echo "Commit: $FORGEJO_SHA"
+          git rev-parse --short HEAD
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -t puntodeventa-backend:${FORGEJO_SHA} \
+            .
+
+      - name: Verificar imagen
+        run: |
+          docker image inspect \
+            puntodeventa-backend:${FORGEJO_SHA}
+
+      - name: Crear configuración de Zoe
+        env:
+          DB_HOST: ${{ vars.PRODUCCION_DB_HOST }}
+          DB_PORT: ${{ vars.PRODUCCION_DB_PORT }}
+          DB_NAME: ${{ vars.ZOE_DB }}
+          DB_USER: ${{ secrets.ZOE_DB_USER }}
+          DB_PASSWORD: ${{ secrets.ZOE_DB_PASSWORD }}
+
+          S3_ENDPOINT: ${{ vars.PRODUCCION_S3_ENDPOINT }}
+          S3_BUCKET: ${{ vars.ZOE_BUCKET }}
+          S3_ACCESS_KEY: ${{ secrets.ZOE_S3_ACCESS_KEY }}
+          S3_SECRET_KEY: ${{ secrets.ZOE_S3_SECRET_KEY }}
+        run: |
+          printf '%s\n' \
+            "DB_HOST=$DB_HOST" \
+            "DB_PORT=$DB_PORT" \
+            "DB_NAME=$DB_NAME" \
+            "DB_USER=$DB_USER" \
+            "DB_PASSWORD=$DB_PASSWORD" \
+            "S3_ENDPOINT=$S3_ENDPOINT" \
+            "S3_BUCKET=$S3_BUCKET" \
+            "S3_ACCESS_KEY=$S3_ACCESS_KEY" \
+            "S3_SECRET_KEY=$S3_SECRET_KEY" \
+            > /tmp/puntodeventa-zoe.env
+
+            chmod 600 /tmp/puntodeventa-zoe.env
+
+      - name: Deploy backend Zoe
+        env:
+          BACKEND_PORT: ${{ vars.ZOE_BACKEND_PORT }}
+        run: |
+          docker rm -f puntodeventa-zoe 2>/dev/null || true
+
+          docker run -d \
+          --name puntodeventa-zoe \
+          --restart unless-stopped \
+          --label puntodeventa.commit="${FORGEJO_SHA}" \
+          --env-file /tmp/puntodeventa-zoe.env \
+          -p "${BACKEND_PORT}:50051" \
+          puntodeventa-backend:${FORGEJO_SHA}
+
+      - name: Verificar contenedor
+        run: |
+          docker ps \
+          --filter name=puntodeventa-zoe
+
+          docker logs \
+          --tail 50 \
+          puntodeventa-zoe
+
+          test "$(docker inspect \
+                --format='{{.State.Running}}' \
+                puntodeventa-zoe)" = "true"
+
+      - name: Eliminar archivo temporal
+        if: always()
+        run: |
+          rm -f /tmp/puntodeventa-zoe.env
